@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Desinstala Escritorio y Widgets (y los restos de meca-qs). No toca tu
+# Desinstala las copias de desarrollo de Escritorio y Widgets. No toca tu
 # configuración (shell.json, shell.toml, escritorio.lua) ni las copias de
 # seguridad en ~/.local/state/lizarbe.
 set -euo pipefail
@@ -10,11 +10,5 @@ source "$SCRIPT_DIR/scripts/lib.sh"
 
 uninstall_app lizarbe-escritorio
 uninstall_app lizarbe-widgets
-menu_remove "setup.widgets"
-menu_remove_escritorio
-remove_legacy_meca_qs
-remove_legacy_meca
-
-menu_refresh
-hypr_reload
-echo "Lizarbe Ajustes desinstalado. Tu configuración no se ha modificado."
+echo "Lizarbe Ajustes (copias de desarrollo) desinstalado. Tu configuración no se ha modificado."
+echo "El menú y las reglas de ventana pertenecen al paquete lizarbe-menu."

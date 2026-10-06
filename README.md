@@ -83,20 +83,18 @@ cd Lizarbe-Ajustes
 ./install.sh
 ```
 
-El instalador (se puede volver a ejecutar para actualizar):
+Esto es solo para desarrollo (los usuarios reciben el paquete `lizarbe-ajustes`). El instalador (se puede volver a ejecutar para actualizar):
 
-1. compila y copia `lizarbe-widgets` a `~/.local/bin/`,
-2. retira la instalación anterior de **meca-qs**, si la hay (binario, entrada del menú, regla de ventana),
-3. registra la aplicación **Widgets** (`~/.local/share/applications/lizarbe-widgets.desktop`),
-4. añade `setup.widgets` a `~/.config/omarchy/extensions/omarchy-menu.jsonc` (con copia de seguridad),
-5. crea `~/.config/hypr/lizarbe-widgets.lua` (ventana flotante y centrada) y lo carga desde `hyprland.lua`.
+1. compila y copia `lizarbe-escritorio` y `lizarbe-widgets` a `~/.local/bin/`,
+2. registra sus aplicaciones (`~/.local/share/applications/*.desktop`),
+3. llama a `lizarbe-doctor --fix` (paquete `lizarbe-menu`), que conecta el menú de Omarchy (Menu → Lizarbe), las ventanas flotantes y limpia restos de versiones anteriores (meca-qs, Meca).
 
 Desinstalar: `./uninstall.sh` (no toca tu configuración de Omarchy).
 
 ## 🕹️ Uso
 
 ```bash
-lizarbe-widgets                     # o Menu → Setup → Widgets y barra
+lizarbe-widgets                     # o Menu → Lizarbe → Widgets y barra
 lizarbe-widgets --section plugins   # abrir una sección: bar, widgets, plugins, idle, appearance, changes
 lizarbe-widgets --advanced          # empezar en modo avanzado
 lizarbe-widgets --lang en           # forzar idioma
@@ -197,5 +195,5 @@ The look follows **Meca**: everything clickable reacts on hover, the bottom bar 
 the mouse, controls are clickable (switches, −/+ steppers, sliders, anchored dropdowns) and
 right-click (or `o`) opens a context menu.
 Open a section directly with `--section <bar|widgets|plugins|idle|appearance|changes>`.
-Install with `./install.sh` (it also removes an old meca-qs install), remove with `./uninstall.sh`.
+Install (development) with `./install.sh`, remove with `./uninstall.sh`.
 Run `lizarbe-widgets --help` for options.
