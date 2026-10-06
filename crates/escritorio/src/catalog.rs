@@ -99,8 +99,8 @@ impl Section {
             Section::Keybinds => "󰘳",
             Section::Autostart => "󰐥",
             Section::NightLight => "󰖔",
-            Section::Compose => "󰗊",
-            Section::Language => "",
+            Section::Compose => "󰞅",
+            Section::Language => "󰗊",
             Section::Themes => "󰸌",
             Section::Changes => "󰄬",
         }
@@ -426,6 +426,7 @@ pub fn is_own(key: &str) -> bool {
     key.starts_with("x:")
         || key.starts_with("m:")
         || key.starts_with("n:")
+        || key.starts_with("lg:")
         || key.starts_with("kbopt:")
 }
 

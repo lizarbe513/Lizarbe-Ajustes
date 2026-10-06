@@ -932,7 +932,7 @@ mod tests {
         assert!(s.dirty(), "el cambio de idioma queda pendiente");
         s.apply().unwrap();
         let lua = std::fs::read_to_string(s.paths.escritorio_lua()).unwrap_or_default();
-        assert!(!lua.contains("lg:ui"), "{lua}");
+        assert!(!lua.contains("lg"), "{lua}");
     }
 
     #[test]
