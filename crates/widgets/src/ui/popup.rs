@@ -95,22 +95,7 @@ pub struct Picker {
     pub anchor: Option<ratatui::layout::Rect>,
 }
 
-/// Minúsculas y sin acentos, para buscar "micro" y encontrar "Micrófono".
-pub fn fold(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| match c {
-            'á' | 'à' | 'ä' | 'â' => 'a',
-            'é' | 'è' | 'ë' | 'ê' => 'e',
-            'í' | 'ì' | 'ï' | 'î' => 'i',
-            'ó' | 'ò' | 'ö' | 'ô' => 'o',
-            'ú' | 'ù' | 'ü' | 'û' => 'u',
-            'ñ' => 'n',
-            'ç' => 'c',
-            other => other,
-        })
-        .collect()
-}
+pub use lizarbe_core::ui::fold;
 
 impl Picker {
     /// Índices visibles según el filtro.

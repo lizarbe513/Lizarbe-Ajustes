@@ -1,8 +1,12 @@
-# meca-qs — Quickshell para Omarchy
+# Lizarbe Ajustes — Widgets
 
-> Panel TUI para configurar la barra, los widgets, los plugins y la apariencia del
-> shell **Quickshell** de [Omarchy](https://omarchy.org), sin editar JSON a mano.
-> Aparece en el menú como **Quickshell**: `Menu → Setup → Config → Quickshell`.
+> **Widgets** (`lizarbe-widgets`) es el panel TUI para configurar la barra, los widgets, los
+> plugins y la apariencia del shell **Quickshell** de [Omarchy](https://omarchy.org), sin editar
+> JSON a mano. Aparece en el menú como **Widgets y barra**: `Menu → Setup → Widgets y barra`.
+>
+> Este repositorio es un *workspace* de Rust que reúne las TUIs de configuración Lizarbe:
+> `crates/core` (núcleo compartido) y `crates/widgets`. **Escritorio** (el port de Meca, para
+> Hyprland) se sumará como `crates/escritorio`.
 
 *[English below](#english)*
 
@@ -14,7 +18,7 @@
 | :--- | :--- |
 | **Barra** | Posición (arriba/abajo/izquierda/derecha), transparencia, widget anclado al centro y, en modo avanzado, una barra completa alternativa. |
 | **Widgets** | Vista previa de la barra; añadir, quitar y mover widgets entre izquierda/centro/derecha (teclado o arrastrando con el ratón); ajustes de cada widget (formatos del reloj con vista previa en vivo, indicadores, clima, espaciador…). En modo avanzado: módulos personalizados de **comando** o **QML** y claves crudas. |
-| **Plugins** | Activar/desactivar servicios, paneles y widgets; instalar desde git, personalizar (clonar) plugins de Omarchy, actualizar y eliminar. |
+| **Plugins** | Activar/desactivar servicios, paneles y widgets; instalar desde git, personalizar (clonar) plugins de Omarchy, actualizar y eliminar, con botones visibles en la propia pantalla. |
 | **Inactividad** | Tiempo hasta el salvapantallas y hasta el bloqueo, con valores sugeridos. |
 | **Apariencia** | Tamaño de letra, escala, tamaño y opacidad de la barra, menús y notificaciones. En modo avanzado: **todas** las claves del `shell.toml` del tema (colores con muestra). |
 | **Cambios** | Lista legible de lo que vas a cambiar (antes → después) y herramientas avanzadas. |
@@ -31,7 +35,7 @@ Al pie de cada pantalla hay tres **botones** que se pulsan con el ratón o con e
 - **Modo simple y avanzado** (`m`): lo esencial con descripciones, o todas las opciones.
 - **Español e inglés** (`i`), detectado automáticamente según `$LANG`.
 - **Cambios por lotes y seguros**: nada se escribe hasta pulsar `a`. Antes de guardar se hace
-  una copia de seguridad en `~/.local/state/meca-qs/backups/` y se escribe de forma atómica.
+  una copia de seguridad en `~/.local/state/lizarbe/backups/widgets/` y se escribe de forma atómica.
   El shell recarga la configuración al instante.
 - Si mueves widgets directamente en la barra mientras la herramienta está abierta, se detecta
   y se recarga; si tenías cambios pendientes, te pregunta qué hacer.
@@ -49,20 +53,22 @@ cd omarchy-quickshell-config
 
 El instalador (se puede volver a ejecutar para actualizar):
 
-1. compila y copia `meca-qs` a `~/.local/bin/`,
-2. registra la aplicación **Quickshell** (`~/.local/share/applications/meca-qs.desktop`),
-3. añade `setup.config.quickshell` a `~/.config/omarchy/extensions/omarchy-menu.jsonc` (con copia de seguridad),
-4. crea `~/.config/hypr/meca-qs.lua` (ventana flotante y centrada) y lo carga desde `hyprland.lua`.
+1. compila y copia `lizarbe-widgets` a `~/.local/bin/`,
+2. retira la instalación anterior de **meca-qs**, si la hay (binario, entrada del menú, regla de ventana),
+3. registra la aplicación **Widgets** (`~/.local/share/applications/lizarbe-widgets.desktop`),
+4. añade `setup.widgets` a `~/.config/omarchy/extensions/omarchy-menu.jsonc` (con copia de seguridad),
+5. crea `~/.config/hypr/lizarbe-widgets.lua` (ventana flotante y centrada) y lo carga desde `hyprland.lua`.
 
 Desinstalar: `./uninstall.sh` (no toca tu configuración de Omarchy).
 
 ## 🕹️ Uso
 
 ```bash
-meca-qs                 # o Menu → Setup → Config → Quickshell
-meca-qs --advanced      # empezar en modo avanzado
-meca-qs --lang en       # forzar idioma
-meca-qs --config-dir /tmp/prueba   # probar sobre una copia (no habla con el shell)
+lizarbe-widgets                     # o Menu → Setup → Widgets y barra
+lizarbe-widgets --section plugins   # abrir una sección: bar, widgets, plugins, idle, appearance, changes
+lizarbe-widgets --advanced          # empezar en modo avanzado
+lizarbe-widgets --lang en           # forzar idioma
+lizarbe-widgets --config-dir /tmp/prueba   # probar sobre una copia (no habla con el shell)
 ```
 
 | Tecla | Acción |
@@ -107,8 +113,8 @@ confirmación tienen botones en relieve que se pueden pulsar.
 | :--- | :--- |
 | `~/.config/omarchy/shell.json` | Barra, widgets y sus ajustes, plugins, inactividad. |
 | `~/.config/omarchy/shell.toml` | Apariencia (capa del usuario sobre el `shell.toml` del tema). |
-| `~/.local/state/meca-qs/backups/` | Copias de seguridad (se guardan las 30 más recientes). |
-| `~/.config/meca-qs/config.toml` | Preferencias de la herramienta (idioma, modo). |
+| `~/.local/state/lizarbe/backups/widgets/` | Copias de seguridad (se guardan las 30 más recientes). |
+| `~/.config/lizarbe/ajustes.toml` | Preferencias compartidas por las TUIs Lizarbe (idioma, modo). Se migran solas desde `~/.config/meca-qs/config.toml`. |
 
 Nunca modifica `/usr/share/omarchy/`. Instalar, clonar, actualizar o eliminar plugins se
 delega a `omarchy plugin …`, que se ejecuta en la propia terminal para que veas su salida.
@@ -116,29 +122,37 @@ delega a `omarchy plugin …`, que se ejecuta en la propia terminal para que vea
 ## 🧑‍💻 Desarrollo
 
 ```bash
-cargo test            # pruebas (incluye leer todos los manifests reales de Omarchy)
-cargo clippy --all-targets
-cargo run -- --config-dir "$(mktemp -d)"   # sandbox vacío
+cargo test            # pruebas de todo el workspace (incluye leer los manifests reales de Omarchy)
+cargo clippy --workspace --all-targets
+cargo run -p lizarbe-widgets -- --config-dir "$(mktemp -d)"   # sandbox vacío
 ```
 
-Estructura: `src/omarchy/` (modelo de `shell.json`, catálogo de plugins, esquemas, `shell.toml`,
-tema, IPC), `src/store.rs` (cambios pendientes, diff, aplicar con backup), `src/app.rs`
-(estado y teclado/ratón), `src/ui/` (dibujo, formularios, ventanas emergentes),
-`src/i18n/` (textos ES/EN).
+Estructura:
+
+- `crates/core/` — núcleo compartido: idiomas (`i18n`), preferencias (`prefs`), paleta del tema
+  (`theme`), escritura atómica con copias de seguridad y transacciones con *rollback* (`fsutil`),
+  comandos externos (`ipc`), Hyprland vía `hyprctl` (`hypr`: valor efectivo de una opción, vista
+  previa con `eval`, recarga con comprobación de errores, monitores, toggles de Omarchy), bucle de la
+  terminal (`term`) y primitivas de dibujo (`ui`).
+- `crates/widgets/` — `src/omarchy/` (modelo de `shell.json`, catálogo de plugins, esquemas,
+  `shell.toml`, IPC con el shell), `src/store.rs` (cambios pendientes, diff, aplicar),
+  `src/app.rs` (estado y teclado/ratón), `src/ui/` (dibujo, formularios, ventanas emergentes),
+  `src/i18n/` (textos ES/EN).
 
 ---
 
 ## English
 
-**meca-qs** is a TUI panel to configure the bar, widgets, plugins and appearance of
-Omarchy's **Quickshell** shell. It shows up as **Quickshell** under
-`Menu → Setup → Config`.
+**Widgets** (`lizarbe-widgets`) is a TUI panel to configure the bar, widgets, plugins and
+appearance of Omarchy's **Quickshell** shell. It shows up as **Widgets y barra** under
+`Menu → Setup`. This repository is a Rust workspace with a shared core (`crates/core`) for the
+Lizarbe settings TUIs.
 
 - **Bar**: position, transparency, center anchor, alternative full bar (advanced).
 - **Widgets**: live bar preview; add, remove and move widgets (keyboard or mouse drag);
   per-widget settings, including clock formats with live preview; custom command/QML modules
   and raw keys in advanced mode.
-- **Plugins**: enable/disable, install from git, clone (customize) built-ins, update, remove.
+- **Plugins**: enable/disable, install from git, clone (customize) built-ins, update, remove — with on-screen buttons.
 - **Idle**: screensaver and lock timeouts.
 - **Appearance**: font size, spacing, bar size and opacities; every theme `shell.toml` key in advanced mode.
 - **Changes**: readable before → after list.
@@ -150,4 +164,6 @@ Simple/advanced mode with `m`, Spanish/English with `i`, help with `?`.
 The look follows **Meca**: everything clickable reacts on hover, the bottom bar explains what is under
 the mouse, controls are clickable (switches, −/+ steppers, sliders, anchored dropdowns) and
 right-click (or `o`) opens a context menu.
-Install with `./install.sh`, remove with `./uninstall.sh`. Run `meca-qs --help` for options.
+Open a section directly with `--section <bar|widgets|plugins|idle|appearance|changes>`.
+Install with `./install.sh` (it also removes an old meca-qs install), remove with `./uninstall.sh`.
+Run `lizarbe-widgets --help` for options.

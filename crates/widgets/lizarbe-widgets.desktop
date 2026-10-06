@@ -1,12 +1,12 @@
 [Desktop Entry]
-Name=Quickshell
-GenericName=Configuración del shell de Omarchy
-GenericName[en]=Omarchy shell settings
+Name=Widgets
+GenericName=Barra y widgets de Omarchy
+GenericName[en]=Omarchy bar and widgets
 Comment=Configura la barra, los widgets, los plugins y la apariencia de Quickshell
 Comment[en]=Configure Quickshell's bar, widgets, plugins and appearance
-Exec=omarchy-launch-tui --app-id=org.omarchy.meca-qs meca-qs
+Exec=omarchy-launch-tui --app-id=org.omarchy.lizarbe-widgets lizarbe-widgets
 Icon=preferences-desktop
 Terminal=false
 Type=Application
 Categories=Settings;DesktopSettings;System;
-Keywords=quickshell;omarchy;bar;widgets;waybar;shell;plugins;tui;meca;
+Keywords=quickshell;omarchy;bar;barra;widgets;waybar;shell;plugins;tui;lizarbe;

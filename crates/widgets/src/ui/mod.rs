@@ -8,10 +8,12 @@ mod modal;
 pub mod popup;
 mod views;
 
+use lizarbe_core::ui::{Hint, header_bar, status_bar};
+pub(crate) use lizarbe_core::ui::{center, fg, pad, put, right_align, truncate, wrap};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::Span;
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, Hit, Section};
@@ -49,109 +51,16 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-// ---------------------------------------------------------------- utilidades
-
-pub(crate) fn fg(c: Color) -> Style {
-    Style::new().fg(c)
-}
-
 /// ¿Está el ratón sobre este elemento (y no hay ventana encima)?
 pub(crate) fn hovered(app: &App, hit: Hit) -> bool {
     app.popup.is_none() && app.hover == Some(hit)
 }
 
-/// Escribe una línea de `spans` en (x, y), recortada al ancho disponible.
-pub(crate) fn put(f: &mut Frame, x: u16, y: u16, spans: Vec<Span>) -> u16 {
-    let area = f.area();
-    if y >= area.bottom() || x >= area.right() {
-        return 0;
-    }
-    let w: u16 = spans.iter().map(|s| s.content.width() as u16).sum();
-    let w = w.min(area.right() - x);
-    f.render_widget(Line::from(spans), Rect::new(x, y, w, 1));
-    w
-}
-
-pub(crate) fn pad(s: &str, w: usize) -> String {
-    let cur = s.width();
-    if cur >= w {
-        truncate(s, w)
-    } else {
-        format!("{s}{}", " ".repeat(w - cur))
-    }
-}
-
-pub(crate) fn truncate(s: &str, w: usize) -> String {
-    if s.width() <= w {
-        return s.to_string();
-    }
-    if w == 0 {
-        return String::new();
-    }
-    let mut out = String::new();
-    let mut used = 0;
-    for c in s.chars() {
-        let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
-        if used + cw + 1 > w {
-            break;
-        }
-        out.push(c);
-        used += cw;
-    }
-    out.push('…');
-    out
-}
-
-/// Ajuste de línea sencillo por palabras.
-pub(crate) fn wrap(text: &str, width: usize) -> Vec<String> {
-    let width = width.max(8);
-    let mut out = vec![];
-    for para in text.split('\n') {
-        let mut line = String::new();
-        for word in para.split_whitespace() {
-            if !line.is_empty() && line.width() + 1 + word.width() > width {
-                out.push(std::mem::take(&mut line));
-            }
-            if !line.is_empty() {
-                line.push(' ');
-            }
-            line.push_str(word);
-            while line.width() > width {
-                let cut: String = line.chars().take(width).collect();
-                line = line.chars().skip(width).collect();
-                out.push(cut);
-            }
-        }
-        out.push(line);
-    }
-    out
-}
-
-pub(crate) fn center(s: &str, w: usize) -> String {
-    let cw = s.width();
-    if cw >= w {
-        return truncate(s, w);
-    }
-    let left = (w - cw) / 2;
-    format!("{}{s}{}", " ".repeat(left), " ".repeat(w - cw - left))
-}
-
-pub(crate) fn right_align(s: &str, w: usize) -> String {
-    let cw = s.width();
-    if cw >= w {
-        return truncate(s, w);
-    }
-    format!("{}{s}", " ".repeat(w - cw))
-}
-
 // ---------------------------------------------------------------- cabecera
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let style = Style::new()
-        .fg(app.pal.bright)
-        .bg(app.pal.accent)
-        .add_modifier(Modifier::BOLD);
-    let left = format!(" 󰕮 QUICKSHELL  ·  {} ", t("app.subtitle"));
+    let left = format!(" 󰕮 {}  ·  {} ", t("app.name").to_uppercase(), t("app.subtitle"));
+    let left_short = format!(" 󰕮 {} ", t("app.name").to_uppercase());
     let mut parts: Vec<String> = vec![];
     if app.store.dirty() {
         let n = app.store.changes().len() + app.store.ops.len();
@@ -172,19 +81,7 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     });
     parts.push(i18n::lang().code().to_uppercase());
     parts.push(format!("q: {}", t("ft.quit")));
-    let mut right = format!(" {} ", parts.join(" │ "));
-    let w = area.width as usize;
-    let left = if left.width() + right.width() > w {
-        " 󰕮 QUICKSHELL ".to_string()
-    } else {
-        left
-    };
-    if left.width() + right.width() > w {
-        right = String::new();
-    }
-    let space = w.saturating_sub(left.width() + right.width());
-    let line = format!("{left}{}{right}", " ".repeat(space));
-    f.render_widget(Line::from(Span::styled(truncate(&line, w), style)), area);
+    header_bar(f, &app.pal, area, &left, &left_short, &parts);
 }
 
 // ---------------------------------------------------------------- sidebar
@@ -332,10 +229,6 @@ fn draw_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
 
 // ---------------------------------------------------------------- pie
 
-/// Atajo del pie: (tecla, descripción, prioridad). Con poco ancho se ocultan
-/// primero los de prioridad más baja.
-type Hint = (String, String, u8);
-
 fn footer_hints(app: &App) -> Vec<Hint> {
     let k = |a: &str, b: &str, p: u8| (a.to_string(), t(b), p);
     if let Some(p) = &app.popup {
@@ -405,7 +298,6 @@ fn footer_hints(app: &App) -> Vec<Hint> {
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
-    let base = Style::new().fg(app.pal.bright).bg(app.pal.soft_muted);
     // Izquierda: aviso reciente, o la explicación de lo que hay bajo el ratón.
     let status = match &app.toast {
         Some(toast) => {
@@ -420,40 +312,12 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
             .map(|h| format!(" 󰳽 {h}"))
             .unwrap_or_default(),
     };
-    let status_style = if app.toast.is_some() {
-        base.add_modifier(Modifier::BOLD)
-    } else {
-        base
-    };
-
-    let hints = footer_hints(app);
-    let render = |h: &[&Hint]| -> String {
-        if h.is_empty() {
-            return String::new();
-        }
-        let parts: Vec<String> = h.iter().map(|(k, d, _)| format!("{k}: {d}")).collect();
-        format!(" {} ", parts.join(" │ "))
-    };
-    let mut keep: Vec<&Hint> = hints.iter().collect();
-    let width = area.width as usize;
-    let budget = width.saturating_sub(status.width().min(width / 2) + 1);
-    for prio in 0..4u8 {
-        while render(&keep).width() > budget {
-            match keep.iter().position(|h| h.2 == prio) {
-                Some(i) => {
-                    keep.remove(i);
-                }
-                None => break,
-            }
-        }
-    }
-    let right = render(&keep);
-    let left_w = width.saturating_sub(right.width());
-    f.render_widget(
-        Line::from(vec![
-            Span::styled(pad(&status, left_w), status_style),
-            Span::styled(right, base),
-        ]),
+    status_bar(
+        f,
+        &app.pal,
         area,
+        &status,
+        app.toast.is_some(),
+        &footer_hints(app),
     );
 }

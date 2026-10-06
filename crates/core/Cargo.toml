@@ -1,0 +1,19 @@
+[package]
+name = "lizarbe-core"
+description = "Núcleo compartido de las TUIs de configuración Lizarbe para Omarchy"
+version.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+dirs.workspace = true
+ratatui.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+unicode-width.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -9,7 +9,7 @@ pub struct Paths {
     pub config_dir: PathBuf,
     /// Tema activo (~/.local/state/omarchy/current/theme).
     pub theme_dir: PathBuf,
-    /// Copias de seguridad propias (~/.local/state/meca-qs/backups).
+    /// Copias de seguridad propias (~/.local/state/lizarbe/backups/widgets).
     pub backup_dir: PathBuf,
     /// Modo sandbox (`--config-dir`): no se habla con el shell en ejecución.
     pub sandbox: bool,
@@ -28,9 +28,9 @@ impl Paths {
         let sandbox = config_override.is_some();
         let config_dir = config_override.unwrap_or_else(|| home.join(".config/omarchy"));
         let backup_dir = if sandbox {
-            config_dir.join(".meca-qs-backups")
+            config_dir.join(".lizarbe-backups")
         } else {
-            state_home.join("meca-qs/backups")
+            state_home.join("lizarbe/backups/widgets")
         };
         Paths {
             omarchy_path,

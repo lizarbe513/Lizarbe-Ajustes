@@ -12,13 +12,14 @@ use unicode_width::UnicodeWidthStr;
 
 use super::form::{self, FieldRow, NoteKind, Row};
 use super::{center, fg, hovered, pad, put, right_align, truncate, wrap};
+use lizarbe_core::ui::{bevel_box, button_look, inner_style, tone};
 use crate::app::{App, Button, Focus, Hit, PluginRow, Section, Sub};
 use crate::i18n::{t, tf};
 use crate::omarchy::curated;
 use crate::omarchy::qt_format;
 use crate::omarchy::schema::{self, Kind, value_label};
 use crate::omarchy::shell_json as sj;
-use crate::omarchy::theme::hex;
+use lizarbe_core::theme::hex;
 use crate::store::Bind;
 
 /// Alto de la zona de botones: separador + botones de 3 líneas.
@@ -100,90 +101,6 @@ fn section_header(app: &App) -> (String, String) {
     (app.section.title(), app.section.description())
 }
 
-// ---------------------------------------------------------------- relieve 3D
-
-/// Caja en relieve de 3 líneas, como los controles de Meca:
-/// `┌───┐` / `┃ x │` / `┗━━━┙`. El borde izquierdo e inferior hacen de
-/// sombra (acento al estar activo).
-#[allow(clippy::too_many_arguments)]
-pub(super) fn bevel_box(
-    f: &mut Frame,
-    x: u16,
-    y: u16,
-    inner: Vec<Span<'static>>,
-    inner_w: usize,
-    border: Color,
-    shadow: Color,
-    bold: bool,
-) {
-    let b = if bold {
-        Style::new().fg(border).add_modifier(Modifier::BOLD)
-    } else {
-        fg(border)
-    };
-    let sh = Style::new().fg(shadow).add_modifier(Modifier::BOLD);
-    put(
-        f,
-        x,
-        y,
-        vec![Span::styled(format!("┌{}┐", "─".repeat(inner_w)), b)],
-    );
-    let mut mid = vec![Span::styled("┃", sh)];
-    mid.extend(inner);
-    mid.push(Span::styled("│", b));
-    put(f, x, y + 1, mid);
-    put(
-        f,
-        x,
-        y + 2,
-        vec![Span::styled(format!("┗{}┙", "━".repeat(inner_w)), sh)],
-    );
-}
-
-/// Colores de un control según esté seleccionado o bajo el ratón.
-struct Tone {
-    border: Color,
-    shadow: Color,
-    bg: Option<Color>,
-    bold: bool,
-}
-
-fn tone(app: &App, selected: bool, hover: bool) -> Tone {
-    if hover {
-        Tone {
-            border: app.pal.accent,
-            shadow: app.pal.accent,
-            bg: Some(app.pal.soft_hover),
-            bold: true,
-        }
-    } else if selected {
-        Tone {
-            border: app.pal.bright,
-            shadow: app.pal.accent,
-            bg: Some(app.pal.soft_selection),
-            bold: true,
-        }
-    } else {
-        Tone {
-            border: app.pal.fg,
-            shadow: app.pal.muted,
-            bg: None,
-            bold: false,
-        }
-    }
-}
-
-fn inner_style(app: &App, tn: &Tone) -> Style {
-    let mut s = Style::new().fg(app.pal.bright);
-    if let Some(bg) = tn.bg {
-        s = s.bg(bg);
-    }
-    if tn.bold {
-        s = s.add_modifier(Modifier::BOLD);
-    }
-    s
-}
-
 // ---------------------------------------------------------------- botones
 
 fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
@@ -225,35 +142,7 @@ fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
         let selected = focused && app.button == i;
         let enabled = app.button_enabled(*b);
         let primary = *b == Button::Apply && enabled;
-        let (border, shadow, text) = if !enabled {
-            (app.pal.dim, app.pal.dim, fg(app.pal.dim))
-        } else if hover {
-            (
-                app.pal.accent,
-                app.pal.accent,
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(app.pal.soft_hover)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else if selected {
-            (
-                app.pal.bright,
-                app.pal.accent,
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(app.pal.soft_selection)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else if primary {
-            (
-                app.pal.bright,
-                app.pal.accent,
-                fg(app.pal.bright).add_modifier(Modifier::BOLD),
-            )
-        } else {
-            (app.pal.fg, app.pal.muted, fg(app.pal.fg))
-        };
+        let (border, shadow, text) = button_look(&app.pal, enabled, hover, selected, primary);
         bevel_box(
             f,
             x,
@@ -583,7 +472,7 @@ fn draw_control(
     match ctl {
         Ctl::Toggle(on) => {
             let h = hov(app, Sub::Main);
-            let tn = tone(app, lit, h);
+            let tn = tone(&app.pal, lit, h);
             let mark_bg = tn.bg.or(if *on {
                 Some(app.pal.soft_selection)
             } else {
@@ -631,12 +520,12 @@ fn draw_control(
         Ctl::Stepper(text) => {
             for (dx, s, sym) in [(0u16, Sub::Minus, " - "), (12u16, Sub::Plus, " + ")] {
                 let h = hov(app, s);
-                let tn = tone(app, lit, h);
+                let tn = tone(&app.pal, lit, h);
                 bevel_box(
                     f,
                     x + dx,
                     y,
-                    vec![Span::styled(sym, inner_style(app, &tn))],
+                    vec![Span::styled(sym, inner_style(&app.pal, &tn))],
                     3,
                     tn.border,
                     tn.shadow,
@@ -694,7 +583,7 @@ fn draw_control(
                 || (matches!(ctl, Ctl::Select(_))
                     && matches!(&app.popup, Some(super::popup::Popup::Picker(p)) if p.anchor.is_some())
                     && is_cursor_row(app, i));
-            let tn = tone(app, lit, h);
+            let tn = tone(&app.pal, lit, h);
             let suffix = match ctl {
                 Ctl::Select(_) => " ▾ ",
                 Ctl::Edit(_) => " ✎ ",
@@ -706,7 +595,7 @@ fn draw_control(
                 f,
                 x,
                 y,
-                vec![Span::styled(body, inner_style(app, &tn))],
+                vec![Span::styled(body, inner_style(&app.pal, &tn))],
                 inner_w,
                 tn.border,
                 tn.shadow,
@@ -719,8 +608,8 @@ fn draw_control(
         }
         Ctl::Color(c, text) => {
             let h = hov(app, Sub::Main);
-            let tn = tone(app, lit, h);
-            let st = inner_style(app, &tn);
+            let tn = tone(&app.pal, lit, h);
+            let st = inner_style(&app.pal, &tn);
             let mut swatch = Style::new().fg(c.unwrap_or(app.pal.dim));
             if let Some(bg) = tn.bg {
                 swatch = swatch.bg(bg);
@@ -1040,7 +929,7 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     app.clamp_plugin_sel(true);
     let rows = app.plugin_rows();
     let w = area.width as usize;
-    let detail_h = 4u16;
+    let detail_h = 5u16;
 
     // Buscador (clicable).
     let hit = Hit::Search;
@@ -1070,6 +959,19 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     );
     app.hits
         .push((Rect::new(area.x, area.y, (w.min(48)) as u16, 1), hit));
+    let search_w = w.min(48) as u16 + 2;
+    let global = [
+        ('n', "󰐕", t("pl.btn.add"), true),
+        ('U', "󰚰", t("pl.btn.update_all"), true),
+    ];
+    draw_chips(
+        f,
+        app,
+        area.x + search_w,
+        area.y,
+        w.saturating_sub(search_w as usize),
+        &global,
+    );
 
     let list = Rect::new(
         area.x,
@@ -1288,5 +1190,52 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 vec![Span::styled(truncate(&format!(" {text}"), w), fg(color))],
             );
         }
+        let can_clone = p.first_party && app.store.catalog.clone_of(&p.id).is_none();
+        let mut actions = vec![
+            ('p', "󰆏", t("menu.p.clone"), can_clone),
+            ('u', "󰚰", t("menu.p.update"), p.is_git),
+            ('x', "󰆴", t("menu.p.remove"), !p.first_party),
+        ];
+        if app.advanced {
+            actions.push(('e', "󰈔", t("menu.p.edit"), !p.first_party));
+        }
+        draw_chips(f, app, area.x + 1, area.bottom() - 1, w.saturating_sub(1), &actions);
+    }
+}
+
+/// Botones planos de una línea para las acciones de plugins: (tecla
+/// equivalente, icono, texto, habilitado). Se omiten los que no caben.
+fn draw_chips(
+    f: &mut Frame,
+    app: &mut App,
+    x: u16,
+    y: u16,
+    max_w: usize,
+    chips: &[(char, &str, String, bool)],
+) {
+    let mut used = 0usize;
+    for (key, icon, label, enabled) in chips {
+        let text = format!(" {icon} {label} ");
+        let cw = text.width();
+        if used + cw > max_w {
+            break;
+        }
+        let hit = Hit::PluginAction(*key);
+        let style = if !enabled {
+            fg(app.pal.dim)
+        } else if hovered(app, hit) {
+            Style::new()
+                .fg(app.pal.bright)
+                .bg(app.pal.soft_hover)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().fg(app.pal.bright).bg(app.pal.soft_muted)
+        };
+        let cx = x + used as u16;
+        put(f, cx, y, vec![Span::styled(text, style)]);
+        if *enabled {
+            app.hits.push((Rect::new(cx, y, cw as u16, 1), hit));
+        }
+        used += cw + 1;
     }
 }

@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use lizarbe_core::fsutil::Transaction;
 use serde_json::{Value, json};
 use toml_edit::DocumentMut;
 
@@ -452,24 +453,17 @@ impl Store {
 
     pub fn apply(&mut self) -> Result<ApplyReport> {
         let mut report = ApplyReport::default();
-        let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
         std::fs::create_dir_all(&self.paths.config_dir)
             .with_context(|| format!("{}", self.paths.config_dir.display()))?;
 
+        let mut tx = Transaction::new(&self.paths.backup_dir);
         if self.json_dirty() {
-            let path = self.paths.shell_json();
-            if let Some(b) = backup(&path, &self.paths.backup_dir, &stamp)? {
-                report.backups.push(b);
-            }
-            write_atomic(&path, &sj::to_pretty(&self.json))?;
+            tx.write(&self.paths.shell_json(), &sj::to_pretty(&self.json))?;
         }
         if self.toml_dirty() {
-            let path = self.paths.shell_toml();
-            if let Some(b) = backup(&path, &self.paths.backup_dir, &stamp)? {
-                report.backups.push(b);
-            }
-            write_atomic(&path, &self.toml.to_string())?;
+            tx.write(&self.paths.shell_toml(), &self.toml.to_string())?;
         }
+        report.backups = tx.commit(30);
 
         if !self.paths.sandbox && ipc::shell_running() {
             match ipc::reload_config() {
@@ -488,46 +482,9 @@ impl Store {
         } else if !self.ops.is_empty() {
             report.errors.push("omarchy-shell".into());
         }
-        prune_backups(&self.paths.backup_dir, 30);
         self.reload();
         Ok(report)
     }
-}
-
-fn backup(path: &Path, dir: &Path, stamp: &str) -> Result<Option<PathBuf>> {
-    if !path.is_file() {
-        return Ok(None);
-    }
-    std::fs::create_dir_all(dir).with_context(|| format!("{}", dir.display()))?;
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let dest = dir.join(format!("{name}.{stamp}"));
-    std::fs::copy(path, &dest).with_context(|| format!("backup {}", dest.display()))?;
-    Ok(Some(dest))
-}
-
-/// Conserva solo las `keep` copias más recientes.
-fn prune_backups(dir: &Path, keep: usize) {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut files: Vec<_> = rd
-        .flatten()
-        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
-        .collect();
-    files.sort_by_key(|f| std::cmp::Reverse(f.0));
-    for (_, p) in files.into_iter().skip(keep) {
-        let _ = std::fs::remove_file(p);
-    }
-}
-
-/// Escribe en un temporal del mismo directorio y lo renombra encima.
-pub fn write_atomic(path: &Path, content: &str) -> Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("file");
-    let tmp = dir.join(format!(".{name}.meca-qs.tmp"));
-    std::fs::write(&tmp, content).with_context(|| format!("{}", tmp.display()))?;
-    std::fs::rename(&tmp, path).with_context(|| format!("{}", path.display()))?;
-    Ok(())
 }
 
 fn short(v: &Value) -> String {

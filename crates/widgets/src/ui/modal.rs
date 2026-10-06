@@ -10,8 +10,8 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear};
 use unicode_width::UnicodeWidthStr;
 
 use super::popup::{Menu, MenuAct, Picker, Popup};
-use super::views::bevel_box;
 use super::{fg, pad, put, truncate, wrap};
+use lizarbe_core::ui::{bevel_box, button_look, centered, frame, row_style};
 use crate::app::{App, Hit};
 use crate::i18n::{t, tf};
 
@@ -30,40 +30,6 @@ fn hover_is(app: &App, hit: Hit) -> bool {
     app.hover == Some(hit)
 }
 
-/// Estilo de una fila de lista: bajo el ratón, seleccionada o normal.
-fn row_style(app: &App, hover: bool, selected: bool, enabled: bool) -> Style {
-    if !enabled {
-        fg(app.pal.dim)
-    } else if hover {
-        Style::new()
-            .fg(app.pal.bright)
-            .bg(app.pal.soft_hover)
-            .add_modifier(Modifier::BOLD)
-    } else if selected {
-        Style::new()
-            .fg(app.pal.bright)
-            .bg(app.pal.soft_selection)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        fg(app.pal.fg)
-    }
-}
-
-fn frame(f: &mut Frame, app: &App, r: Rect, title: &str) -> Rect {
-    f.render_widget(Clear, r);
-    let block = Block::new()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(fg(app.pal.accent))
-        .title(Span::styled(
-            format!(" {title} "),
-            fg(app.pal.bright).add_modifier(Modifier::BOLD),
-        ));
-    let inner = block.inner(r);
-    f.render_widget(block, r);
-    inner
-}
-
 /// Botones de la ventana, alineados a la derecha (como en Meca).
 fn draw_modal_buttons(f: &mut Frame, app: &mut App, popup: &Popup, area: Rect) {
     let buttons = popup.buttons();
@@ -77,24 +43,7 @@ fn draw_modal_buttons(f: &mut Frame, app: &mut App, popup: &Popup, area: Rect) {
         let hover = hover_is(app, hit);
         let primary = *key == KeyCode::Enter;
         let w = label.width();
-        let (border, shadow, text) = if hover {
-            (
-                app.pal.accent,
-                app.pal.accent,
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(app.pal.soft_hover)
-                    .add_modifier(Modifier::BOLD),
-            )
-        } else if primary {
-            (
-                app.pal.bright,
-                app.pal.accent,
-                fg(app.pal.bright).add_modifier(Modifier::BOLD),
-            )
-        } else {
-            (app.pal.fg, app.pal.muted, fg(app.pal.fg))
-        };
+        let (border, shadow, text) = button_look(&app.pal, true, hover, false, primary);
         bevel_box(
             f,
             x,
@@ -108,17 +57,6 @@ fn draw_modal_buttons(f: &mut Frame, app: &mut App, popup: &Popup, area: Rect) {
         app.hits.push((Rect::new(x, area.y, w as u16 + 2, 3), hit));
         x += w as u16 + 2 + gap;
     }
-}
-
-fn centered(area: Rect, w: u16, h: u16) -> Rect {
-    let w = w.min(area.width.saturating_sub(2));
-    let h = h.min(area.height.saturating_sub(2));
-    Rect::new(
-        area.x + (area.width - w) / 2,
-        area.y + (area.height - h) / 2,
-        w,
-        h,
-    )
 }
 
 // ---------------------------------------------------------------- ventanas
@@ -137,7 +75,7 @@ fn draw_window(f: &mut Frame, app: &mut App, area: Rect, popup: &Popup) {
             let text: Vec<String> = lines.iter().flat_map(|l| wrap(l, tw)).collect();
             let body_h = (text.len() as u16).min(max_body);
             let r = centered(area, w, body_h + 2 + buttons_h);
-            let inner = frame(f, app, r, title);
+            let inner = frame(f, &app.pal, r, title);
             for (n, l) in text.iter().take(body_h as usize).enumerate() {
                 put(
                     f,
@@ -151,7 +89,7 @@ fn draw_window(f: &mut Frame, app: &mut App, area: Rect, popup: &Popup) {
         Popup::Conflict { files } => {
             let text = wrap(&tf("conflict.body", &[("files", &files.join(", "))]), tw);
             let r = centered(area, w, text.len() as u16 + 2 + buttons_h);
-            let inner = frame(f, app, r, &t("conflict.title"));
+            let inner = frame(f, &app.pal, r, &t("conflict.title"));
             for (n, l) in text.iter().enumerate() {
                 put(
                     f,
@@ -166,7 +104,7 @@ fn draw_window(f: &mut Frame, app: &mut App, area: Rect, popup: &Popup) {
             let hint = wrap(&inp.hint, tw);
             let body_h = hint.len() as u16 + 2 + u16::from(inp.error.is_some());
             let r = centered(area, w, body_h + 2 + buttons_h);
-            let inner = frame(f, app, r, &inp.title);
+            let inner = frame(f, &app.pal, r, &inp.title);
             for (n, l) in hint.iter().enumerate() {
                 put(
                     f,
@@ -216,14 +154,14 @@ fn draw_window(f: &mut Frame, app: &mut App, area: Rect, popup: &Popup) {
         Popup::Checklist(c) => {
             let body_h = (c.opts.len() as u16 + 2).min(max_body);
             let r = centered(area, w, body_h + 2 + buttons_h);
-            let inner = frame(f, app, r, &c.title);
+            let inner = frame(f, &app.pal, r, &c.title);
             let lh = body_h.saturating_sub(2) as usize;
             let offset = c.sel.saturating_sub(lh.saturating_sub(1));
             for (n, o) in c.opts.iter().enumerate().skip(offset).take(lh) {
                 let y = inner.y + (n - offset) as u16;
                 let hit = Hit::PopupItem(n);
                 let on = c.checked.get(n).copied().unwrap_or(false);
-                let style = row_style(app, hover_is(app, hit), n == c.sel, true);
+                let style = row_style(&app.pal, hover_is(app, hit), n == c.sel, true);
                 let mut text = format!(" {} {}", if on { "■" } else { "□" }, o.label);
                 if !o.desc.is_empty() {
                     text = format!("{text}  — {}", o.desc);
@@ -278,7 +216,7 @@ fn draw_big_picker(f: &mut Frame, app: &mut App, area: Rect, w: u16, popup: &Pop
     }
     let h = (rows.len() as u16 + 10).clamp(14, area.height.saturating_sub(2));
     let r = centered(area, w, h);
-    let inner = frame(f, app, r, &p.title);
+    let inner = frame(f, &app.pal, r, &p.title);
     let iw = inner.width as usize;
 
     put(
@@ -342,7 +280,7 @@ fn draw_big_picker(f: &mut Frame, app: &mut App, area: Rect, w: u16, popup: &Pop
             Some(i) => {
                 let it = &p.items[*i];
                 let hit = Hit::PopupItem(*i);
-                let style = row_style(app, hover_is(app, hit), *i == p.sel, it.enabled);
+                let style = row_style(&app.pal, hover_is(app, hit), *i == p.sel, it.enabled);
                 let current = p.current.as_ref() == Some(&it.value);
                 put(
                     f,
@@ -482,7 +420,7 @@ fn draw_help(f: &mut Frame, app: &mut App, area: Rect, w: u16, popup: &Popup, sc
     } else {
         t("help.title")
     };
-    let inner = frame(f, app, r, &title);
+    let inner = frame(f, &app.pal, r, &title);
     for (n, l) in lines
         .into_iter()
         .skip(scroll as usize)
@@ -557,7 +495,7 @@ fn draw_dropdown(f: &mut Frame, app: &mut App, area: Rect, p: &Picker) {
         let hit = Hit::PopupItem(i);
         let y = ly + (n - offset) as u16;
         let current = p.current.as_ref() == Some(&it.value);
-        let style = row_style(app, hover_is(app, hit), i == p.sel, it.enabled);
+        let style = row_style(&app.pal, hover_is(app, hit), i == p.sel, it.enabled);
         put(
             f,
             inner.x,
@@ -616,7 +554,7 @@ fn draw_menu(f: &mut Frame, app: &mut App, area: Rect, m: &Menu) {
             ly += 1;
         }
         let hit = Hit::MenuItem(i);
-        let style = row_style(app, hover_is(app, hit), i == m.sel, it.enabled);
+        let style = row_style(&app.pal, hover_is(app, hit), i == m.sel, it.enabled);
         put(
             f,
             inner.x,

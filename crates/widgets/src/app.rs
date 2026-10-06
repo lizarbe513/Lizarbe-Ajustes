@@ -6,6 +6,10 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{
     KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
+use lizarbe_core::prefs::Prefs;
+use lizarbe_core::term::{Command, TuiApp};
+use lizarbe_core::theme::Palette;
+use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
 use serde_json::{Value, json};
 
@@ -16,8 +20,6 @@ use crate::omarchy::ipc;
 use crate::omarchy::schema::{self, FieldDef, Kind};
 use crate::omarchy::shell_json::{self as sj, key};
 use crate::omarchy::shell_toml as st;
-use crate::omarchy::theme::Palette;
-use crate::prefs::Prefs;
 use crate::store::{Bind, Scope, Store};
 use crate::ui::form::{self, Act, FieldRow, FormState, NoteKind, Row};
 use crate::ui::popup::{
@@ -73,6 +75,19 @@ impl Section {
             Section::Idle => "sec.idle.desc",
             Section::Appearance => "sec.appearance.desc",
             Section::Changes => "sec.changes.desc",
+        })
+    }
+
+    /// Identificador para `--section` (en inglés o en español).
+    pub fn from_id(id: &str) -> Option<Section> {
+        Some(match id.trim().to_lowercase().as_str() {
+            "bar" | "barra" => Section::Bar,
+            "widgets" => Section::Widgets,
+            "plugins" => Section::Plugins,
+            "idle" | "inactividad" => Section::Idle,
+            "appearance" | "apariencia" => Section::Appearance,
+            "changes" | "cambios" => Section::Changes,
+            _ => return None,
         })
     }
 
@@ -136,6 +151,9 @@ pub enum Hit {
     Plugin(usize),
     /// Interruptor ON/off de la fila de un plugin.
     PluginSwitch(usize),
+    /// Botón de acción de plugins; lleva la tecla equivalente (`n`, `U`,
+    /// `p`, `u`, `x`, `e`).
+    PluginAction(char),
     PopupItem(usize),
     /// Botones de una ventana emergente.
     ModalButton(usize),
@@ -211,6 +229,8 @@ pub struct App {
     pub mouse: Option<(u16, u16)>,
     pub quit: bool,
     pub exec: Option<ExecRequest>,
+    /// Comando en ejecución (la interfaz está suspendida).
+    running: Option<ExecRequest>,
     pub shell_running: bool,
     last_check: Instant,
     last_click: Option<(Instant, Hit)>,
@@ -238,6 +258,7 @@ impl App {
             mouse: None,
             quit: false,
             exec: None,
+            running: None,
             shell_running,
             last_check: Instant::now(),
             last_click: None,
@@ -768,7 +789,7 @@ impl App {
         });
     }
 
-    fn go_section(&mut self, s: Section) {
+    pub fn go_section(&mut self, s: Section) {
         self.section = s;
         self.focus = Focus::Content;
     }
@@ -1789,6 +1810,10 @@ impl App {
                 self.plugins.sel = i;
                 self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
             }
+            Some(Hit::PluginAction(c)) => {
+                self.focus = Focus::Content;
+                self.plugins_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+            }
             _ => {}
         }
     }
@@ -2099,6 +2124,13 @@ impl App {
             Hit::Search => t("hint.search"),
             Hit::Plugin(_) => t("hint.plugin"),
             Hit::PluginSwitch(_) => t("hint.plugin_switch"),
+            Hit::PluginAction(c) => t(match c {
+                'n' => "help.p.add",
+                'p' => "help.p.clone",
+                'x' => "help.p.remove",
+                'e' => "help.p.edit",
+                _ => "help.p.update",
+            }),
             Hit::Button(i) => match Button::ALL[i] {
                 Button::Apply if self.store.dirty() => tf(
                     "btn.apply.desc",
@@ -2119,6 +2151,44 @@ impl App {
             Hit::MenuItem(_) | Hit::ModalButton(_) => return None,
         })
         .filter(|s| !s.is_empty())
+    }
+}
+
+impl TuiApp for App {
+    fn draw(&mut self, f: &mut Frame) {
+        crate::ui::draw(f, self);
+    }
+
+    fn on_key(&mut self, key: KeyEvent) {
+        App::on_key(self, key);
+    }
+
+    fn on_mouse(&mut self, m: MouseEvent) {
+        App::on_mouse(self, m);
+    }
+
+    fn tick(&mut self) {
+        App::tick(self);
+    }
+
+    fn take_command(&mut self) -> Option<Command> {
+        let req = self.exec.take()?;
+        let cmd = Command {
+            program: req.program.clone(),
+            args: req.args.clone(),
+        };
+        self.running = Some(req);
+        Some(cmd)
+    }
+
+    fn after_command(&mut self, result: Result<bool, String>) {
+        if let Some(req) = self.running.take() {
+            self.after_exec(&req, result);
+        }
+    }
+
+    fn should_quit(&self) -> bool {
+        self.quit
     }
 }
 
