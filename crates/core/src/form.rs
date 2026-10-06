@@ -178,6 +178,10 @@ pub fn display_value<B>(f: &FieldRow<B>) -> String {
                 .unwrap_or_else(|| n.to_string()),
             Some(n) => n.to_string(),
         },
+        // Texto con sugerencias: el nombre de la sugerencia si coincide.
+        Kind::Text if def.preview.is_none() && option_label(&def.presets, v).is_some() => {
+            option_label(&def.presets, v).unwrap_or_default()
+        }
         Kind::Text | Kind::Path | Kind::Color => match v.and_then(Value::as_str) {
             None => "—".into(),
             Some("") => format!("({})", t("val.empty")),

@@ -3,9 +3,10 @@
 > Configuración de [Omarchy](https://omarchy.org) por interfaz TUI, sin editar archivos de texto.
 > Este repositorio es un *workspace* de Rust con dos aplicaciones y un núcleo compartido:
 >
-> - **Escritorio** (`lizarbe-escritorio`): apariencia y comportamiento de las ventanas de
->   Hyprland (espacios, bordes, transparencia, desenfoque, sombras, animaciones, disposición,
->   escritorios, foco). *En desarrollo:* reemplazará a Meca HyprConfig.
+> - **Escritorio** (`lizarbe-escritorio`): Hyprland sin editar archivos. Apariencia (espacios,
+>   bordes, transparencia, desenfoque, sombras, animaciones), ventanas y escritorios, pantallas
+>   (resolución, Hz, escala, posición, giro), teclado (idioma, tecla Compose, repetición), mouse
+>   y touchpad, y cursor. *En desarrollo:* reemplazará a Meca HyprConfig.
 > - **Widgets** (`lizarbe-widgets`): barra, widgets, plugins y apariencia del shell
 >   **Quickshell**. En el menú: `Menu → Setup → Widgets y barra`.
 > - `crates/core`: idioma, preferencias, tema, escritura segura, Hyprland y piezas de interfaz
@@ -21,9 +22,13 @@ escribe de forma atómica y recarga Hyprland; si Hyprland informa un error, desh
 
 ```bash
 lizarbe-escritorio                        # o búscalo como "Escritorio" en el lanzador
-lizarbe-escritorio --section ventanas     # apariencia, ventanas, cambios
+lizarbe-escritorio --section teclado      # apariencia, ventanas, pantallas, teclado, mouse, cursor, cambios
 lizarbe-escritorio --config-dir /tmp/x    # probar sobre una carpeta (no recarga Hyprland)
 ```
+
+El **tamaño de la interfaz** se guarda en `monitors.lua`, igual que el atajo de escala de Omarchy,
+para que los dos sigan funcionando juntos. La **tecla Compose** reemplaza los distintos «arreglos de
+Bloq Mayús»: elige qué tecla hace de Compose (o ninguna) y el resto de opciones del teclado no se toca.
 
 Mientras Meca HyprConfig siga activo (carga `hyprland-gui.lua` al final), sus valores pisan a
 los de Escritorio; la app lo avisa.

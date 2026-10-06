@@ -50,21 +50,44 @@ mod tests {
     }
 
     /// Cada ajuste del catálogo tiene nombre, descripción y textos de opciones
-    /// en los dos idiomas.
+    /// en los dos idiomas (incluida una pantalla de ejemplo).
     #[test]
     fn catalog_is_translated() {
-        let es: HashMap<String, String> = serde_json::from_str(ES).unwrap();
-        let en: HashMap<String, String> = serde_json::from_str(EN).unwrap();
-        for section in crate::catalog::Section::ALL {
-            for g in crate::catalog::groups(section) {
-                assert!(es.contains_key(&format!("g.{}", g.id)), "grupo {}", g.id);
-                for f in g.fields {
-                    for k in [format!("o.{}", f.key), format!("o.{}.d", f.key)] {
-                        assert!(es.contains_key(&k) && en.contains_key(&k), "falta {k}");
-                    }
-                    if let lizarbe_core::schema::Kind::Enum(opts) = &f.kind {
+        let mut m = lizarbe_core::hypr::Monitor::named("HDMI-A-1");
+        m.width = 1920;
+        m.height = 1080;
+        m.refresh_rate = 60.0;
+        m.available_modes = vec!["1920x1080@60.00Hz".into()];
+        let ctx = crate::catalog::Ctx {
+            monitors: vec![m],
+            cursor_themes: vec!["Adwaita".into()],
+        };
+        for lang in [Lang::Es, Lang::En] {
+            set_lang(lang);
+            for section in crate::catalog::Section::ALL {
+                assert!(!section.title().starts_with("sec."), "{section:?}");
+                for g in crate::catalog::groups(section, &ctx) {
+                    assert!(!g.title.starts_with("g."), "grupo {}", g.id);
+                    assert!(!g.title.contains("mon."), "grupo {}", g.id);
+                    for f in g.fields {
+                        for text in [&f.label, &f.desc] {
+                            assert!(
+                                !text.starts_with("o.") && !text.starts_with("mon."),
+                                "{}: falta texto",
+                                f.key
+                            );
+                        }
+                        let opts = match &f.kind {
+                            lizarbe_core::schema::Kind::Enum(o) => o.clone(),
+                            _ => f.presets.clone(),
+                        };
                         for o in opts {
-                            assert!(!o.label.starts_with("o."), "opción sin texto: {}", o.label);
+                            assert!(
+                                !o.label.starts_with("o.") && !o.label.starts_with("mon."),
+                                "{}: opción sin texto {}",
+                                f.key,
+                                o.label
+                            );
                         }
                     }
                 }

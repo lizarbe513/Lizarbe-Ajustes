@@ -189,6 +189,28 @@ pub struct Monitor {
     pub available_modes: Vec<String>,
 }
 
+impl Monitor {
+    /// Pantalla sin datos (p. ej. una que ahora está desconectada).
+    pub fn named(name: &str) -> Monitor {
+        Monitor {
+            name: name.to_string(),
+            description: String::new(),
+            width: 0,
+            height: 0,
+            refresh_rate: 0.0,
+            x: 0,
+            y: 0,
+            scale: 1.0,
+            transform: 0,
+            focused: false,
+            disabled: false,
+            vrr: false,
+            mirror_of: String::new(),
+            available_modes: vec![],
+        }
+    }
+}
+
 pub fn parse_monitors(json: &str) -> Result<Vec<Monitor>, String> {
     serde_json::from_str(json).map_err(|e| e.to_string())
 }

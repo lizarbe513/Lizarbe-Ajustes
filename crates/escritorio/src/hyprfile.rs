@@ -11,9 +11,30 @@
 use std::collections::BTreeMap;
 use std::fmt::Write;
 
+use lizarbe_core::hypr::Monitor;
 use serde_json::Value;
 
+use crate::catalog::{is_own, mode_value, monitor_key};
+
 pub type Values = BTreeMap<String, Value>;
+
+/// Lo que hace falta además de los valores para generar el archivo.
+#[derive(Debug, Clone)]
+pub struct RenderCtx {
+    /// Pantallas conectadas (para completar sus reglas).
+    pub monitors: Vec<Monitor>,
+    /// Escala general de `monitors.lua` (`"auto"` o un número).
+    pub global_scale: Value,
+}
+
+impl Default for RenderCtx {
+    fn default() -> Self {
+        RenderCtx {
+            monitors: vec![],
+            global_scale: Value::String("auto".into()),
+        }
+    }
+}
 
 const META: &str = "-- LIZARBE_ESCRITORIO: ";
 
@@ -25,17 +46,23 @@ pub fn parse(text: &str) -> Option<Values> {
 }
 
 /// Contenido completo del archivo para `values`.
-pub fn render(values: &Values) -> String {
+pub fn render(values: &Values, ctx: &RenderCtx) -> String {
     let mut out = String::from(
         "-- Gestionado por Escritorio (Lizarbe): se reescribe al pulsar Aplicar.\n\
          -- No lo edites a mano; para ajustes propios usa looknfeel.lua, input.lua, etc.\n",
     );
-    let meta = serde_json::to_string(values).unwrap_or_else(|_| "{}".into());
+    // Los ajustes `m:` viven en monitors.lua, no aquí.
+    let stored: Values = values
+        .iter()
+        .filter(|(k, _)| !k.starts_with("m:"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    let meta = serde_json::to_string(&stored).unwrap_or_else(|_| "{}".into());
     let _ = writeln!(out, "{META}{meta}");
 
     let config: Values = values
         .iter()
-        .filter(|(k, _)| !k.starts_with("x:"))
+        .filter(|(k, _)| !is_own(k))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     if !config.is_empty() {
@@ -62,7 +89,123 @@ pub fn render(values: &Values) -> String {
             );
         }
     }
+    if values.get("x:ws_swipe").and_then(Value::as_bool) == Some(true) {
+        out.push_str("\n-- Gesto de tres dedos para cambiar de escritorio\n");
+        out.push_str(
+            "hl.gesture({ fingers = 3, direction = \"horizontal\", action = \"workspace\" })\n",
+        );
+    }
+    let theme = values.get("x:cursor_theme").and_then(Value::as_str);
+    let size = values.get("x:cursor_size").and_then(Value::as_i64);
+    if theme.is_some() || size.is_some() {
+        out.push_str("\n-- Cursor\n");
+        if let Some(th) = theme {
+            for var in ["XCURSOR_THEME", "HYPRCURSOR_THEME"] {
+                let _ = writeln!(out, "hl.env(\"{var}\", {th:?})");
+            }
+        }
+        if let Some(sz) = size {
+            for var in ["XCURSOR_SIZE", "HYPRCURSOR_SIZE"] {
+                let _ = writeln!(out, "hl.env(\"{var}\", \"{sz}\")");
+            }
+        }
+    }
+    let rules = monitor_rules(values, ctx);
+    if !rules.is_empty() {
+        out.push_str("\n-- Pantallas\n");
+        for r in rules {
+            out.push_str(&r);
+            out.push('\n');
+        }
+    }
     out
+}
+
+/// Una regla `hl.monitor` completa por cada pantalla con algún ajuste. Lo
+/// que no se cambió se toma de cómo está la pantalla ahora.
+fn monitor_rules(values: &Values, ctx: &RenderCtx) -> Vec<String> {
+    let mut names: Vec<&str> = values
+        .keys()
+        .filter_map(|k| monitor_key(k))
+        .map(|(n, _)| n)
+        .collect();
+    names.dedup();
+    names
+        .into_iter()
+        .map(|name| {
+            let live = ctx.monitors.iter().find(|m| m.name == name);
+            let get = |part: &str| values.get(&format!("x:mon:{name}:{part}")).cloned();
+            let mode = get("mode").unwrap_or_else(|| {
+                Value::String(match live {
+                    Some(m) => mode_value(m.width, m.height, m.refresh_rate),
+                    None => "preferred".into(),
+                })
+            });
+            let position = get("position").unwrap_or(Value::String("auto".into()));
+            let scale = get("scale").unwrap_or_else(|| ctx.global_scale.clone());
+            let transform = get("transform")
+                .unwrap_or_else(|| Value::from(live.map(|m| m.transform).unwrap_or(0)));
+            format!(
+                "hl.monitor({{ output = {}, mode = {}, position = {}, scale = {}, transform = {} }})",
+                lua_value(&Value::String(name.into())),
+                lua_value(&mode),
+                lua_value(&position),
+                lua_value(&scale),
+                lua_value(&transform),
+            )
+        })
+        .collect()
+}
+
+/// Valores de las variables `local omarchy_monitor_scale` y
+/// `omarchy_gdk_scale` de `monitors.lua`.
+pub fn monitor_locals(text: &str) -> (Option<Value>, Option<i64>) {
+    let mut scale = None;
+    let mut gdk = None;
+    for line in text.lines() {
+        if let Some(v) = line.strip_prefix("local omarchy_monitor_scale = ") {
+            let v = v.trim();
+            scale = Some(match v.trim_matches('"') {
+                s if v.starts_with('"') => Value::String(s.into()),
+                s => s
+                    .parse::<f64>()
+                    .ok()
+                    .and_then(serde_json::Number::from_f64)
+                    .map(Value::Number)
+                    .unwrap_or(Value::String(s.into())),
+            });
+        } else if let Some(v) = line.strip_prefix("local omarchy_gdk_scale = ") {
+            gdk = v.trim().parse().ok();
+        }
+    }
+    (scale, gdk)
+}
+
+/// `monitors.lua` con otra escala general, como hace
+/// `omarchy-hyprland-monitor-scaling`: la escala de GTK sigue a la general
+/// redondeada. `None` si el archivo ya no tiene esas variables.
+pub fn with_monitor_scale(text: &str, scale: &Value) -> Option<String> {
+    if !text
+        .lines()
+        .any(|l| l.starts_with("local omarchy_monitor_scale = "))
+    {
+        return None;
+    }
+    let gdk = scale.as_f64().map(|s| (s.round() as i64).max(1));
+    let mut out = String::new();
+    for line in text.lines() {
+        if line.starts_with("local omarchy_monitor_scale = ") {
+            let _ = writeln!(out, "local omarchy_monitor_scale = {}", lua_value(scale));
+        } else if line.starts_with("local omarchy_gdk_scale = ")
+            && let Some(g) = gdk
+        {
+            let _ = writeln!(out, "local omarchy_gdk_scale = {g}");
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    Some(out)
 }
 
 /// Árbol anidado a partir de claves `a:b:c` o `a:b.c` (los guiones pasan a
@@ -112,9 +255,10 @@ fn lua_table(map: &BTreeMap<String, Node>, depth: usize) -> String {
     s
 }
 
-/// Número sin ceros sobrantes: 0.5 → "0.5", 3.0 → "3", 2.274 → "2.27".
+/// Número sin ceros sobrantes y con hasta 6 decimales (las escalas de
+/// pantalla necesitan precisión): 0.5 → "0.5", 3.0 → "3".
 pub fn num(n: f64) -> String {
-    let s = format!("{:.2}", (n * 100.0).round() / 100.0);
+    let s = format!("{n:.6}");
     let s = s.trim_end_matches('0').trim_end_matches('.');
     if s.is_empty() || s == "-0" {
         "0".into()
@@ -243,7 +387,7 @@ mod tests {
             ("input:touchpad:tap-to-click", json!(false)),
             ("general:layout", json!("master")),
         ]);
-        let text = render(&v);
+        let text = render(&v, &RenderCtx::default());
         assert_eq!(parse(&text), Some(v));
         assert!(text.contains("  general = {\n    gaps_in = 8,\n    layout = \"master\",\n  },"));
         assert!(text.contains("blur = {\n      enabled = true,"));
@@ -253,7 +397,7 @@ mod tests {
 
     #[test]
     fn empty_has_no_config_block() {
-        let text = render(&Values::new());
+        let text = render(&Values::new(), &RenderCtx::default());
         assert_eq!(parse(&text), Some(Values::new()));
         assert!(!text.contains("hl.config"));
         assert_eq!(parse("-- otro archivo\n"), None);
@@ -262,23 +406,26 @@ mod tests {
     #[test]
     fn animations_only_when_changed() {
         let v = vals(&[("x:anim_speed", json!("fast"))]);
-        let text = render(&v);
-        assert!(text.contains("leaf = \"windows\", enabled = true, speed = 2.27"));
+        let text = render(&v, &RenderCtx::default());
+        assert!(text.contains("leaf = \"windows\", enabled = true, speed = 2.274"));
         assert!(!text.contains("leaf = \"workspaces\""));
         let v = vals(&[("x:anim_windows", json!("slide"))]);
-        let text = render(&v);
+        let text = render(&v, &RenderCtx::default());
         assert!(text.contains("leaf = \"windowsIn\", enabled = true, speed = 4.1, bezier = \"easeOutQuint\", style = \"slide\""));
         assert!(
             !text.contains("leaf = \"fade\""),
             "solo las hojas afectadas"
         );
         let v = vals(&[("x:anim_workspaces", json!("slidevert"))]);
-        assert!(render(&v).contains("leaf = \"workspaces\", enabled = true, speed = 3, bezier = \"easeOutQuint\", style = \"slidevert\""));
+        assert!(render(&v, &RenderCtx::default()).contains("leaf = \"workspaces\", enabled = true, speed = 3, bezier = \"easeOutQuint\", style = \"slidevert\""));
     }
 
     #[test]
     fn persistent_workspaces() {
-        let text = render(&vals(&[("x:ws_persistent", json!(3))]));
+        let text = render(
+            &vals(&[("x:ws_persistent", json!(3))]),
+            &RenderCtx::default(),
+        );
         assert_eq!(text.matches("persistent = true").count(), 3);
         assert!(
             !text.contains("hl.config"),
@@ -300,10 +447,74 @@ mod tests {
     }
 
     #[test]
+    fn monitor_rules_fill_from_live() {
+        let mut m = Monitor::named("HDMI-A-1");
+        m.width = 1920;
+        m.height = 1080;
+        m.refresh_rate = 60.0;
+        let ctx = RenderCtx {
+            monitors: vec![m],
+            global_scale: json!(1.25),
+        };
+        let text = render(
+            &vals(&[("x:mon:HDMI-A-1:position", json!("auto-left"))]),
+            &ctx,
+        );
+        assert!(text.contains(
+            "hl.monitor({ output = \"HDMI-A-1\", mode = \"1920x1080@60.00\", position = \"auto-left\", scale = 1.25, transform = 0 })"
+        ));
+        // Desconectada: modo preferido.
+        let text = render(&vals(&[("x:mon:DP-1:scale", json!(2))]), &ctx);
+        assert!(
+            text.contains(
+                "output = \"DP-1\", mode = \"preferred\", position = \"auto\", scale = 2"
+            )
+        );
+    }
+
+    #[test]
+    fn edits_monitor_locals() {
+        let text = "local omarchy_gdk_scale = 2\nlocal omarchy_monitor_scale = \"auto\"\nhl.env(\"GDK_SCALE\", tostring(omarchy_gdk_scale))\n";
+        assert_eq!(monitor_locals(text), (Some(json!("auto")), Some(2)));
+        let out = with_monitor_scale(text, &json!(1.25)).unwrap();
+        assert!(
+            out.starts_with("local omarchy_gdk_scale = 1\nlocal omarchy_monitor_scale = 1.25\n")
+        );
+        assert_eq!(monitor_locals(&out), (Some(json!(1.25)), Some(1)));
+        let out = with_monitor_scale(text, &json!("auto")).unwrap();
+        assert!(
+            out.contains("omarchy_gdk_scale = 2"),
+            "con auto se mantiene la de GTK"
+        );
+        assert_eq!(with_monitor_scale("hl.monitor({})\n", &json!(1)), None);
+    }
+
+    #[test]
+    fn cursor_and_gesture_lines() {
+        let text = render(
+            &vals(&[
+                ("x:cursor_theme", json!("Yaru")),
+                ("x:cursor_size", json!(32)),
+                ("x:ws_swipe", json!(true)),
+                ("m:scale", json!(2)),
+            ]),
+            &RenderCtx::default(),
+        );
+        assert!(text.contains("hl.env(\"XCURSOR_THEME\", \"Yaru\")"));
+        assert!(text.contains("hl.env(\"HYPRCURSOR_SIZE\", \"32\")"));
+        assert!(text.contains("hl.gesture({ fingers = 3"));
+        assert!(
+            !text.contains("m:scale"),
+            "m: no se guarda en escritorio.lua"
+        );
+    }
+
+    #[test]
     fn formats_numbers() {
         assert_eq!(num(0.5), "0.5");
         assert_eq!(num(3.0), "3");
-        assert_eq!(num(3.79 * 0.6), "2.27");
+        assert_eq!(num(3.79 * 0.6), "2.274");
+        assert_eq!(num(160.0 / 120.0), "1.333333");
         assert_eq!(lua_value(&json!([4, 3])), "{ 4, 3 }");
         assert_eq!(lua_value(&json!("a\"b")), "\"a\\\"b\"");
     }

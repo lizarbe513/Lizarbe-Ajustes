@@ -42,6 +42,10 @@ impl Paths {
         self.hypr_dir.join("hyprland.lua")
     }
 
+    pub fn monitors_lua(&self) -> PathBuf {
+        self.hypr_dir.join("monitors.lua")
+    }
+
     pub fn theme_colors(&self) -> PathBuf {
         self.theme_dir.join("colors.toml")
     }

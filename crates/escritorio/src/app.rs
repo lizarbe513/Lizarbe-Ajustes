@@ -24,6 +24,7 @@ pub use crate::catalog::Section;
 use crate::catalog::{self, groups};
 use crate::i18n::{self, t, tf};
 use crate::store::{Bind, Store};
+use lizarbe_core::schema::FieldDef;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Focus {
@@ -164,7 +165,7 @@ pub struct App {
     /// Botón resaltado cuando el foco está en la fila de botones.
     pub button: usize,
     pub advanced: bool,
-    pub forms: [FormState; 3],
+    pub forms: Vec<FormState>,
     pub popup: Option<Popup>,
     pub toast: Option<Toast>,
     pub hits: Vec<(Rect, Hit)>,
@@ -185,7 +186,7 @@ impl App {
             section: Section::Appearance,
             focus: Focus::Content,
             button: 0,
-            forms: Default::default(),
+            forms: vec![FormState::default(); Section::ALL.len()],
             popup: None,
             toast: None,
             hits: vec![],
@@ -257,13 +258,24 @@ impl App {
         if self.store.foreign_file {
             rows.push(Row::Note(t("note.foreign"), NoteKind::Warn));
         }
-        for g in groups(section) {
-            rows.push(Row::Header(t(&format!("g.{}", g.id))));
+        for g in groups(section, &self.store.ctx) {
+            rows.push(Row::Header(g.title.clone()));
             if g.id == "spacing" && lizarbe_core::hypr::toggle_enabled("window-no-gaps") {
                 rows.push(Row::Note(t("note.no_gaps"), NoteKind::Warn));
             }
+            if g.id == "monitors_all" {
+                if !self.store.global_scale_editable() {
+                    rows.push(Row::Note(t("note.no_global_scale"), NoteKind::Info));
+                }
+                if self.store.ctx.monitors.is_empty() {
+                    rows.push(Row::Note(t("note.no_monitors"), NoteKind::Info));
+                }
+            }
             for mut def in g.fields {
                 if def.advanced && !self.advanced {
+                    continue;
+                }
+                if def.key == "m:scale" && !self.store.global_scale_editable() {
                     continue;
                 }
                 def.default = self.store.base(&def);
@@ -274,6 +286,17 @@ impl App {
         rows
     }
 
+    /// Definición de un ajuste para mostrar su nombre y valores.
+    fn def_of(&self, key: &str) -> Option<FieldDef> {
+        let mut def = catalog::find(key, &self.store.ctx)?;
+        if let Some((name, _)) = catalog::monitor_key(key)
+            && !def.label.starts_with(name)
+        {
+            def.label = tf("mon.label", &[("name", name), ("field", &def.label)]);
+        }
+        Some(def)
+    }
+
     fn changes_rows(&self) -> Vec<Row> {
         let mut rows = vec![Row::Header(t("ch.header"))];
         let changes = self.store.changes();
@@ -281,8 +304,9 @@ impl App {
             rows.push(Row::Note(t("ch.none"), NoteKind::Info));
         } else {
             for c in changes {
-                let def = catalog::find(&c.key);
-                let show = |v: Option<Value>| match (v, &def) {
+                let def = self.def_of(&c.key);
+                let base = def.as_ref().and_then(|d| self.store.base(d));
+                let show = |v: Option<Value>| match (v.or_else(|| base.clone()), &def) {
                     (None, _) => t("ch.omarchy"),
                     (Some(v), Some(d)) => match &d.kind {
                         Kind::Enum(opts) => opts
@@ -335,7 +359,8 @@ impl App {
     }
 
     fn form_state(&mut self) -> &mut FormState {
-        &mut self.forms[self.section.index()]
+        let i = self.section.index();
+        &mut self.forms[i]
     }
 
     // ------------------------------------------------------------ teclado
@@ -512,14 +537,24 @@ impl App {
     pub fn restore_scope(&self) -> (Vec<String>, &'static str) {
         match self.section {
             Section::Changes => (self.store.values.keys().cloned().collect(), "restore.all"),
-            s => (
-                groups(s)
+            s => {
+                let mut keys: Vec<String> = groups(s, &self.store.ctx)
                     .into_iter()
                     .flat_map(|g| g.fields)
                     .map(|f| f.key)
-                    .collect(),
-                "restore.section",
-            ),
+                    .collect();
+                if s == Section::Monitors {
+                    // También las pantallas que ahora no están conectadas.
+                    keys.extend(
+                        self.store
+                            .values
+                            .keys()
+                            .filter(|k| k.starts_with("x:mon:"))
+                            .cloned(),
+                    );
+                }
+                (keys, "restore.section")
+            }
         }
     }
 
