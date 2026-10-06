@@ -5,7 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.2.0"
 edition = "2024"
-repository = "https://github.com/lizarbe513/omarchy-quickshell-config"
+repository = "https://github.com/lizarbe513/Lizarbe-Ajustes"
 
 [workspace.dependencies]
 lizarbe-core = { path = "crates/core" }

@@ -46,8 +46,8 @@ Al pie de cada pantalla hay tres **botones** que se pulsan con el ratón o con e
 Requiere Rust (`omarchy pkg add rust` si no lo tienes).
 
 ```bash
-git clone https://github.com/lizarbe513/omarchy-quickshell-config.git
-cd omarchy-quickshell-config
+git clone https://github.com/lizarbe513/Lizarbe-Ajustes.git
+cd Lizarbe-Ajustes
 ./install.sh
 ```
 
