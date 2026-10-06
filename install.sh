@@ -31,13 +31,14 @@ install_app lizarbe-widgets widgets
 command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" &>/dev/null || true
 ok "Binarios en $BIN_DIR"
 
-step "[3/4] Añadiendo \"Widgets y barra\" a Menu → Setup…"
+step "[3/4] Conectando Escritorio y Widgets al menú de Omarchy…"
 menu_add "setup.widgets" "  \"setup.widgets\": {
     \"icon\": \"󰕮\",
     \"label\": \"Widgets y barra\",
     \"description\": \"Barra, widgets, plugins y apariencia del shell\",
     \"action\": \"omarchy-launch-tui --app-id=org.omarchy.lizarbe-widgets lizarbe-widgets\"
   }"
+menu_install_escritorio
 menu_refresh
 ok "$MENU_EXT"
 

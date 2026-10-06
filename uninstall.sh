@@ -11,6 +11,7 @@ source "$SCRIPT_DIR/scripts/lib.sh"
 uninstall_app lizarbe-escritorio
 uninstall_app lizarbe-widgets
 menu_remove "setup.widgets"
+menu_remove_escritorio
 remove_legacy_meca_qs
 
 menu_refresh

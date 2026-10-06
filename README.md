@@ -6,7 +6,8 @@
 > - **Escritorio** (`lizarbe-escritorio`): Hyprland sin editar archivos. Apariencia (espacios,
 >   bordes, transparencia, desenfoque, sombras, animaciones), ventanas y escritorios, pantallas
 >   (resolución, Hz, escala, posición, giro), teclado (idioma, tecla Compose, repetición), mouse
->   y touchpad, y cursor. *En desarrollo:* reemplazará a Meca HyprConfig.
+>   y touchpad, cursor, atajos de teclado (con grabación de combinaciones), inicio automático, luz
+>   nocturna y atajos de texto (`~/.XCompose`). *En desarrollo:* reemplazará a Meca HyprConfig.
 > - **Widgets** (`lizarbe-widgets`): barra, widgets, plugins y apariencia del shell
 >   **Quickshell**. En el menú: `Menu → Setup → Widgets y barra`.
 > - `crates/core`: idioma, preferencias, tema, escritura segura, Hyprland y piezas de interfaz
@@ -22,9 +23,13 @@ escribe de forma atómica y recarga Hyprland; si Hyprland informa un error, desh
 
 ```bash
 lizarbe-escritorio                        # o búscalo como "Escritorio" en el lanzador
-lizarbe-escritorio --section teclado      # apariencia, ventanas, pantallas, teclado, mouse, cursor, cambios
+lizarbe-escritorio --section teclado      # apariencia, ventanas, pantallas, teclado, mouse, cursor, atajos, inicio, luz, texto, cambios
 lizarbe-escritorio --config-dir /tmp/x    # probar sobre una carpeta (no recarga Hyprland)
 ```
+
+`install.sh` conecta Escritorio al menú de Omarchy reutilizando los ids nativos (`style.hyprland`,
+`setup.monitors`, `setup.keybindings`, `setup.input`), así que esas entradas dejan de abrir un editor de
+texto; `uninstall.sh` las devuelve a como estaban.
 
 El **tamaño de la interfaz** se guarda en `monitors.lua`, igual que el atajo de escala de Omarchy,
 para que los dos sigan funcionando juntos. La **tecla Compose** reemplaza los distintos «arreglos de

@@ -135,3 +135,35 @@ uninstall_app() {
   rm -f "$BIN_DIR/$bin" "$APP_DIR/$bin.desktop" "$HYPR_DIR/$bin.lua"
   hypr_require_remove "hypr.$bin" "-- $bin: ventana flotante"
 }
+
+# menu_set <clave> <entrada JSONC>: añade o reemplaza la entrada.
+menu_set() {
+  menu_remove "$1"
+  menu_add "$1" "$2"
+}
+
+# Entradas del menú de Omarchy que abren Escritorio. Las que reutilizan un id
+# nativo (style.hyprland, setup.monitors…) reemplazan al editor de texto; las
+# demás son nuevas.
+ESCRITORIO_MENU_KEYS=(style.hyprland setup.monitors setup.keybindings setup.input setup.nightlight setup.compose setup.escritorio)
+
+escritorio_entry() { # clave icono etiqueta sección
+  local sec=""
+  [[ -n $4 ]] && sec=" --section $4"
+  printf '  "%s": {\n    "icon": "%s",\n    "label": "%s",\n    "action": "omarchy-launch-tui --app-id=org.omarchy.lizarbe-escritorio lizarbe-escritorio%s"\n  }' "$1" "$2" "$3" "$sec"
+}
+
+menu_install_escritorio() {
+  menu_set style.hyprland "$(escritorio_entry style.hyprland "" "Apariencia de ventanas" apariencia)"
+  menu_set setup.monitors "$(escritorio_entry setup.monitors "󰍹" "Pantallas" pantallas)"
+  menu_set setup.keybindings "$(escritorio_entry setup.keybindings "" "Atajos de teclado" atajos)"
+  menu_set setup.input "$(escritorio_entry setup.input "" "Teclado y mouse" teclado)"
+  menu_set setup.nightlight "$(escritorio_entry setup.nightlight "󰖔" "Luz nocturna" luz)"
+  menu_set setup.compose "$(escritorio_entry setup.compose "󰗊" "Atajos de texto" texto)"
+  menu_set setup.escritorio "$(escritorio_entry setup.escritorio "󰍹" "Escritorio" "")"
+}
+
+menu_remove_escritorio() {
+  local k
+  for k in "${ESCRITORIO_MENU_KEYS[@]}"; do menu_remove "$k"; done
+}
