@@ -24,6 +24,8 @@ use crate::binds;
 use crate::catalog::{self, Ctx, mode_value, monitor_key};
 use crate::hyprfile::{self, CustomBind, RenderCtx, Values};
 use crate::paths::Paths;
+use crate::sunset::{self, Night};
+use crate::xcompose;
 
 /// Un ajuste: opción de Hyprland o ajuste propio.
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +73,12 @@ pub struct Store {
     pub autostart: Vec<autostart::Entry>,
     autostart_orig: Vec<autostart::Entry>,
     autostart_raw: Option<String>,
+    /// Horario de la luz nocturna en `hyprsunset.conf` (o el de fábrica).
+    night: Night,
+    /// Atajos de texto con los cambios pendientes.
+    pub xcompose: Vec<xcompose::Entry>,
+    xcompose_orig: Vec<xcompose::Entry>,
+    xcompose_raw: Option<String>,
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -131,6 +139,10 @@ impl Store {
             autostart: vec![],
             autostart_orig: vec![],
             autostart_raw: None,
+            night: Night::default(),
+            xcompose: vec![],
+            xcompose_orig: vec![],
+            xcompose_raw: None,
             paths,
         };
         s.reload();
@@ -166,6 +178,16 @@ impl Store {
             .map(autostart::parse)
             .unwrap_or_default();
         self.autostart = self.autostart_orig.clone();
+        self.night = read(&self.paths.hyprsunset_conf())
+            .and_then(|t| sunset::parse(&t))
+            .unwrap_or_default();
+        self.xcompose_raw = read(&self.paths.xcompose());
+        self.xcompose_orig = self
+            .xcompose_raw
+            .as_deref()
+            .map(xcompose::parse)
+            .unwrap_or_default();
+        self.xcompose = self.xcompose_orig.clone();
         self.live = hypr::available();
         self.binds.clear();
         self.effective.clear();
@@ -226,6 +248,19 @@ impl Store {
         if let Some(prefix) = kb_prefix(key) {
             return Some(json!(kb_token(&self.kb_base(), prefix)));
         }
+        match key {
+            "n:on" => {
+                return Some(json!(
+                    self.autostart_orig
+                        .iter()
+                        .any(|e| e.cmd == "hyprsunset" && e.enabled)
+                ));
+            }
+            "n:start" => return Some(json!(self.night.start)),
+            "n:end" => return Some(json!(self.night.end)),
+            "n:temp" => return Some(json!(self.night.temp)),
+            _ => {}
+        }
         if key == "m:scale" {
             return self.mon_scale.clone().or_else(|| def.default.clone());
         }
@@ -265,12 +300,19 @@ impl Store {
     }
 
     pub fn dirty(&self) -> bool {
-        self.values != self.orig || self.autostart != self.autostart_orig
+        self.values != self.orig
+            || self.autostart != self.autostart_orig
+            || self.xcompose != self.xcompose_orig
     }
 
     pub fn discard(&mut self) {
         self.values = self.orig.clone();
         self.autostart = self.autostart_orig.clone();
+        self.xcompose = self.xcompose_orig.clone();
+    }
+
+    pub fn discard_compose(&mut self) {
+        self.xcompose = self.xcompose_orig.clone();
     }
 
     /// Deshace los cambios pendientes del inicio automático.
@@ -354,6 +396,23 @@ impl Store {
                 new: Some(Value::Bool(e.enabled)),
             });
         }
+        for o in &self.xcompose_orig {
+            let now = self.xcompose.iter().find(|e| e.line == o.line);
+            if now.map(|e| &e.text) != Some(&o.text) {
+                out.push(Change {
+                    key: format!("xc:{}", o.keys),
+                    old: Some(json!(o.text)),
+                    new: now.map(|e| json!(e.text)),
+                });
+            }
+        }
+        for e in self.xcompose.iter().filter(|e| e.line.is_none()) {
+            out.push(Change {
+                key: format!("xc:{}", e.keys),
+                old: None,
+                new: Some(json!(e.text)),
+            });
+        }
         out
     }
 
@@ -408,10 +467,45 @@ impl Store {
         if let Some(text) = read(&main).and_then(|t| hyprfile::with_require(&t)) {
             tx.write(&main, &text)?;
         }
+        // Luz nocturna: horario en hyprsunset.conf y arranque con la sesión.
+        let night_changed = self.values.keys().any(|k| k.starts_with("n:"));
+        if night_changed {
+            let text = |k: &str, d: &str| {
+                self.values
+                    .get(k)
+                    .and_then(Value::as_str)
+                    .unwrap_or(d)
+                    .to_string()
+            };
+            let night = Night {
+                start: text("n:start", &self.night.start),
+                end: text("n:end", &self.night.end),
+                temp: self
+                    .values
+                    .get("n:temp")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(self.night.temp),
+            };
+            tx.write(&self.paths.hyprsunset_conf(), &sunset::render(&night))?;
+            if let Some(on) = self.values.get("n:on").and_then(Value::as_bool) {
+                match self.autostart.iter_mut().find(|e| e.cmd == "hyprsunset") {
+                    Some(e) => e.enabled = on,
+                    None if on => self
+                        .autostart
+                        .push(autostart::Entry::new("hyprsunset", false)),
+                    None => {}
+                }
+            }
+        }
         if self.autostart != self.autostart_orig {
             let text =
                 autostart::render(self.autostart_raw.as_deref().unwrap_or(""), &self.autostart);
             tx.write(&self.paths.autostart_lua(), &text)?;
+        }
+        let compose_changed = self.xcompose != self.xcompose_orig;
+        if compose_changed {
+            let text = xcompose::render(self.xcompose_raw.as_deref().unwrap_or(""), &self.xcompose);
+            tx.write(&self.paths.xcompose(), &text)?;
         }
         if let Some(scale) = self.values.get("m:scale") {
             let monitors = self.paths.monitors_lua();
@@ -432,6 +526,12 @@ impl Store {
             if cursor_changed {
                 apply_cursor(&cursor.0, cursor.1);
             }
+            if night_changed {
+                let _ = ipc::run("omarchy-restart-hyprsunset", &[]);
+            }
+        }
+        if compose_changed && !self.paths.sandbox {
+            let _ = ipc::run("omarchy-restart-xcompose", &[]);
         }
         report.backups = tx.commit(30);
         self.reload();
@@ -453,8 +553,16 @@ fn autostart_index(key: &str) -> Option<usize> {
     key.strip_prefix("as:")?.parse().ok()
 }
 
+/// Índice de un atajo de texto en una clave `xc:<i>`.
+fn xcompose_index(key: &str) -> Option<usize> {
+    key.strip_prefix("xc:")?.parse().ok()
+}
+
 impl FieldStore<Bind> for Store {
     fn get(&self, bind: &Bind) -> Option<Value> {
+        if let Some(i) = xcompose_index(&bind.0) {
+            return self.xcompose.get(i).map(|e| json!(e.text));
+        }
         if let Some(i) = autostart_index(&bind.0) {
             return self.autostart.get(i).map(|e| Value::Bool(e.enabled));
         }
@@ -469,6 +577,14 @@ impl FieldStore<Bind> for Store {
     }
 
     fn get_original(&self, bind: &Bind) -> Option<Value> {
+        if let Some(i) = xcompose_index(&bind.0) {
+            let e = self.xcompose.get(i)?;
+            return self
+                .xcompose_orig
+                .iter()
+                .find(|o| o.line.is_some() && o.line == e.line)
+                .map(|o| json!(o.text));
+        }
         if let Some(i) = autostart_index(&bind.0) {
             let e = self.autostart.get(i)?;
             return self
@@ -490,6 +606,12 @@ impl FieldStore<Bind> for Store {
     /// Igualar el valor de Omarchy equivale a no fijarlo: así el archivo
     /// solo guarda lo que de verdad cambia.
     fn set_field(&mut self, bind: &Bind, value: Value, default: Option<&Value>) {
+        if let Some(i) = xcompose_index(&bind.0) {
+            if let (Some(e), Some(t)) = (self.xcompose.get_mut(i), value.as_str()) {
+                e.text = t.to_string();
+            }
+            return;
+        }
         if let Some(i) = autostart_index(&bind.0) {
             if let Some(e) = self.autostart.get_mut(i) {
                 e.enabled = value.as_bool().unwrap_or(e.enabled);
@@ -520,6 +642,15 @@ impl FieldStore<Bind> for Store {
     }
 
     fn unset(&mut self, bind: &Bind) {
+        if let Some(i) = xcompose_index(&bind.0) {
+            let orig = self
+                .get_original(bind)
+                .and_then(|v| v.as_str().map(String::from));
+            if let (Some(orig), Some(e)) = (orig, self.xcompose.get_mut(i)) {
+                e.text = orig;
+            }
+            return;
+        }
         if let Some(i) = autostart_index(&bind.0) {
             let orig = self.get_original(bind).and_then(|v| v.as_bool());
             if let (Some(e), Some(on)) = (self.autostart.get_mut(i), orig) {

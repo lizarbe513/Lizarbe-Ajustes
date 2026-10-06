@@ -11,7 +11,9 @@ mod i18n;
 mod paths;
 mod record;
 mod store;
+mod sunset;
 mod ui;
+mod xcompose;
 
 use std::path::PathBuf;
 

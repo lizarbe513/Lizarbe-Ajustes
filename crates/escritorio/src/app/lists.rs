@@ -154,6 +154,43 @@ impl App {
         rows
     }
 
+    pub(super) fn compose_rows(&self) -> Vec<Row> {
+        let mut rows = vec![
+            Row::Note(t("note.compose"), NoteKind::Info),
+            Row::Action(t("xc.add"), Act::AddCompose),
+        ];
+        if self.store.xcompose.is_empty() {
+            rows.push(Row::Note(t("xc.none"), NoteKind::Info));
+            return rows;
+        }
+        rows.push(Row::Header(t("xc.header")));
+        for (i, e) in self.store.xcompose.iter().enumerate() {
+            let seq = e
+                .keys
+                .to_uppercase()
+                .chars()
+                .map(String::from)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let label = tf("xc.label", &[("keys", &seq)]);
+            let def = FieldDef::new(&format!("xc:{i}"), label, Kind::Text)
+                .desc(t("xc.desc"))
+                .default(json!(e.text));
+            rows.push(Row::Field(FieldRow::new(
+                def,
+                Bind(format!("xc:{i}")),
+                &self.store,
+            )));
+        }
+        rows
+    }
+
+    pub(super) fn remove_compose(&mut self, i: usize) {
+        if i < self.store.xcompose.len() {
+            self.store.xcompose.remove(i);
+        }
+    }
+
     fn apps_cached(&self) -> &[DesktopApp] {
         self.apps
             .get_or_init(|| apps::installed(i18n::lang().code()))
@@ -174,6 +211,14 @@ impl App {
                 )))
             }
             Act::ClearSearch => self.bind_filter.clear(),
+            Act::AddCompose => {
+                self.popup = Some(Popup::Input(Input::new(
+                    t("xc.add"),
+                    t("xc.keys.hint"),
+                    "",
+                    cp_input(EInput::ComposeKeys),
+                )))
+            }
             Act::AddAutostart => {
                 let mut items: Vec<PickItem> = self
                     .apps_cached()
@@ -238,6 +283,13 @@ impl App {
                     MenuAct::ResetField(i),
                     f.value.is_some(),
                 ),
+            ];
+        }
+        if let Some(n) = key.strip_prefix("xc:").and_then(|n| n.parse().ok()) {
+            return vec![
+                item("󰏫", t("menu.edit"), MenuAct::Activate(i), true),
+                item("󰑓", t("menu.reset_field"), MenuAct::ResetField(i), true),
+                item("󰆴", t("xc.remove"), MenuAct::ComposeRemove(n), true),
             ];
         }
         if let Some(n) = key.strip_prefix("as:").and_then(|n| n.parse().ok()) {
@@ -543,6 +595,28 @@ impl App {
                 }
                 self.add_custom(keys, host, format!("{{ webapp = {url:?} }}"));
             }
+            EInput::ComposeKeys => {
+                if !crate::xcompose::valid_keys(&text) {
+                    return Err(t("xc.keys.err"));
+                }
+                if self.store.xcompose.iter().any(|e| e.keys == text) {
+                    return Err(t("xc.exists"));
+                }
+                self.popup = Some(Popup::Input(Input::new(
+                    tf("xc.text.title", &[("keys", &text.to_uppercase())]),
+                    t("xc.text.hint"),
+                    "",
+                    cp_input(EInput::ComposeText(text)),
+                )));
+            }
+            EInput::ComposeText(keys) => {
+                if text.is_empty() {
+                    return Err(t("err.empty"));
+                }
+                self.store
+                    .xcompose
+                    .push(crate::xcompose::Entry::new(&keys, &text));
+            }
             EInput::AutostartCmd => {
                 if text.is_empty() {
                     return Err(t("err.empty"));
@@ -588,6 +662,17 @@ impl App {
                     .to_string()
             };
             return Some((t("ch.custom_binds"), count(&c.old), count(&c.new)));
+        }
+        if let Some(keys) = c.key.strip_prefix("xc:") {
+            let show = |v: &Option<Value>| match v {
+                None => t("xc.none_value"),
+                Some(v) => v.as_str().unwrap_or_default().to_string(),
+            };
+            return Some((
+                tf("ch.compose", &[("keys", &keys.to_uppercase())]),
+                show(&c.old),
+                show(&c.new),
+            ));
         }
         if let Some(cmd) = c.key.strip_prefix("as:") {
             let name = apps::name_for(cmd, self.apps_cached()).unwrap_or_else(|| cmd.to_string());

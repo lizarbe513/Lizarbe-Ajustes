@@ -61,6 +61,19 @@ impl Paths {
         self.hypr_dir.join("autostart.lua")
     }
 
+    pub fn hyprsunset_conf(&self) -> PathBuf {
+        self.hypr_dir.join("hyprsunset.conf")
+    }
+
+    /// `~/.XCompose` (en pruebas, dentro de la carpeta de pruebas).
+    pub fn xcompose(&self) -> PathBuf {
+        if self.sandbox {
+            self.hypr_dir.join(".XCompose")
+        } else {
+            dirs::home_dir().unwrap_or_default().join(".XCompose")
+        }
+    }
+
     pub fn theme_colors(&self) -> PathBuf {
         self.theme_dir.join("colors.toml")
     }

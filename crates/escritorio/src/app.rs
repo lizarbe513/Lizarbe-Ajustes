@@ -117,6 +117,7 @@ pub enum Act {
     SearchBinds,
     ClearSearch,
     AddAutostart,
+    AddCompose,
 }
 
 /// Qué recibe la combinación que se está grabando.
@@ -152,6 +153,8 @@ pub enum Confirm {
 #[derive(Debug, Clone, PartialEq)]
 pub enum EInput {
     BindFilter,
+    ComposeKeys,
+    ComposeText(String),
     BindCommand(String),
     BindWeb(String),
     AutostartCmd,
@@ -174,6 +177,7 @@ pub enum MenuAct {
     BindDisable(usize),
     CustomRemove(usize),
     AutostartRemove(usize),
+    ComposeRemove(usize),
     Apply,
     Cancel,
     Restore,
@@ -300,6 +304,7 @@ impl App {
             Section::Changes => self.changes_rows(),
             Section::Keybinds => self.keybind_rows(),
             Section::Autostart => self.autostart_rows(),
+            Section::Compose => self.compose_rows(),
             s => self.settings_rows(s),
         }
     }
@@ -588,6 +593,17 @@ impl App {
             KeyCode::Char('n') if self.section == Section::Autostart => {
                 self.run_act(Act::AddAutostart)
             }
+            KeyCode::Char('n') if self.section == Section::Compose => self.run_act(Act::AddCompose),
+            KeyCode::Char('d') | KeyCode::Delete
+                if self.section == Section::Compose
+                    && matches!(rows.get(sel), Some(Row::Field(_))) =>
+            {
+                if let Some(Row::Field(f)) = rows.get(sel)
+                    && let Some(n) = f.bind.0.strip_prefix("xc:").and_then(|n| n.parse().ok())
+                {
+                    self.remove_compose(n);
+                }
+            }
             KeyCode::Char('d') | KeyCode::Delete
                 if self.section == Section::Autostart
                     && matches!(rows.get(sel), Some(Row::Field(_))) =>
@@ -640,6 +656,16 @@ impl App {
                 "restore.binds",
             ),
             Section::Autostart => (vec![], "restore.autostart"),
+            Section::Compose => (vec![], "restore.compose"),
+            Section::NightLight => (
+                self.store
+                    .values
+                    .keys()
+                    .filter(|k| k.starts_with("n:"))
+                    .cloned()
+                    .collect(),
+                "restore.night",
+            ),
             s => {
                 let mut keys: Vec<String> = groups(s, &self.store.ctx)
                     .into_iter()
@@ -663,7 +689,7 @@ impl App {
 
     fn request_restore(&mut self) {
         let (keys, k) = self.restore_scope();
-        let action = if self.section == Section::Autostart {
+        let action = if self.section == Section::Autostart || self.section == Section::Compose {
             Confirm::RestoreAutostart
         } else {
             Confirm::Restore(keys)
@@ -754,7 +780,11 @@ impl App {
                     Confirm::Quit => self.quit = true,
                     Confirm::BindAssign { target, keys } => self.assign(target, keys),
                     Confirm::RestoreAutostart => {
-                        self.store.discard_autostart();
+                        if self.section == Section::Compose {
+                            self.store.discard_compose();
+                        } else {
+                            self.store.discard_autostart();
+                        }
                         self.toast(t("msg.restored"), NoteKind::Info);
                     }
                     Confirm::Restore(keys) => {
@@ -810,18 +840,15 @@ impl App {
                         }
                     }
                 }
-                cp::InputTarget::App(input) => match self.on_input(input, text) {
-                    Ok(()) => {
-                        if matches!(self.popup, Some(Popup::Input(_))) {
-                            self.popup = None;
-                        }
-                    }
-                    Err(msg) => {
+                cp::InputTarget::App(input) => {
+                    let before = self.popup.take();
+                    if let Err(msg) = self.on_input(input, text) {
+                        self.popup = before;
                         if let Some(Popup::Input(inp)) = &mut self.popup {
                             inp.error = Some(msg);
                         }
                     }
-                },
+                }
             },
             Outcome::Checked(bind, values) => {
                 self.popup = None;
@@ -1022,7 +1049,9 @@ impl App {
                 self.form_state().sel = i;
                 let rows = self.rows();
                 if let Some(Row::Field(f)) = rows.get(i)
-                    && (Self::is_list_row(&f.bind.0) || f.bind.0.starts_with("as:"))
+                    && (Self::is_list_row(&f.bind.0)
+                        || f.bind.0.starts_with("as:")
+                        || f.bind.0.starts_with("xc:"))
                 {
                     items.extend(self.list_menu_items(i, f));
                 } else if let Some(Row::Field(f)) = rows.get(i) {
@@ -1104,6 +1133,7 @@ impl App {
             }
             MenuAct::CustomRemove(n) => self.remove_custom(n),
             MenuAct::AutostartRemove(n) => self.remove_autostart(n),
+            MenuAct::ComposeRemove(n) => self.remove_compose(n),
             MenuAct::Apply => self.request_apply(),
             MenuAct::Cancel => self.request_discard(),
             MenuAct::Restore => self.request_restore(),

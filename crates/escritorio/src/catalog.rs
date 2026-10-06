@@ -22,11 +22,13 @@ pub enum Section {
     Cursor,
     Keybinds,
     Autostart,
+    NightLight,
+    Compose,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 9] = [
+    pub const ALL: [Section; 11] = [
         Section::Appearance,
         Section::Windows,
         Section::Monitors,
@@ -35,6 +37,8 @@ impl Section {
         Section::Cursor,
         Section::Keybinds,
         Section::Autostart,
+        Section::NightLight,
+        Section::Compose,
         Section::Changes,
     ];
 
@@ -53,6 +57,8 @@ impl Section {
             "cursor" => Section::Cursor,
             "atajos" | "keybinds" | "shortcuts" | "bindings" => Section::Keybinds,
             "inicio" | "autostart" => Section::Autostart,
+            "luz" | "nightlight" | "night" => Section::NightLight,
+            "texto" | "compose" | "xcompose" => Section::Compose,
             "cambios" | "changes" => Section::Changes,
             _ => return None,
         })
@@ -68,6 +74,8 @@ impl Section {
             Section::Cursor => "cursor",
             Section::Keybinds => "keybinds",
             Section::Autostart => "autostart",
+            Section::NightLight => "nightlight",
+            Section::Compose => "compose",
             Section::Changes => "changes",
         }
     }
@@ -82,6 +90,8 @@ impl Section {
             Section::Cursor => "󰇀",
             Section::Keybinds => "󰘳",
             Section::Autostart => "󰐥",
+            Section::NightLight => "󰖔",
+            Section::Compose => "󰗊",
             Section::Changes => "󰄬",
         }
     }
@@ -108,7 +118,15 @@ pub const CATEGORIES: [(&str, &[Section]); 4] = [
             Section::Cursor,
         ],
     ),
-    ("cat.more", &[Section::Keybinds, Section::Autostart]),
+    (
+        "cat.more",
+        &[
+            Section::Keybinds,
+            Section::Autostart,
+            Section::NightLight,
+            Section::Compose,
+        ],
+    ),
     ("cat.review", &[Section::Changes]),
 ];
 
@@ -187,7 +205,8 @@ pub fn groups(section: Section, ctx: &Ctx) -> Vec<Group> {
         Section::Mouse => mouse(),
         Section::Cursor => cursor(ctx),
         // Listas propias: las construye la aplicación.
-        Section::Keybinds | Section::Autostart | Section::Changes => vec![],
+        Section::NightLight => nightlight(),
+        Section::Keybinds | Section::Autostart | Section::Compose | Section::Changes => vec![],
     }
 }
 
@@ -387,7 +406,10 @@ pub fn hypr_keys() -> Vec<String> {
 
 /// Ajustes propios de Escritorio, que no son opciones de Hyprland.
 pub fn is_own(key: &str) -> bool {
-    key.starts_with("x:") || key.starts_with("m:") || key.starts_with("kbopt:")
+    key.starts_with("x:")
+        || key.starts_with("m:")
+        || key.starts_with("n:")
+        || key.starts_with("kbopt:")
 }
 
 /// Definición de un ajuste por su clave.
@@ -752,6 +774,38 @@ fn cursor(ctx: &Ctx) -> Vec<Group> {
                 json!(2),
             )
             .advanced(),
+        ],
+    )]
+}
+
+fn time_choice(key: &str, times: &[&str], default: &str) -> FieldDef {
+    let opts = times
+        .iter()
+        .map(|t| Opt::new(json!(t), t.to_string()))
+        .collect();
+    field(key, Kind::Enum(opts), json!(default))
+}
+
+fn nightlight() -> Vec<Group> {
+    let temps = [6500, 5000, 4500, 4000, 3500, 3000, 2500]
+        .iter()
+        .map(|k| json!(k))
+        .collect::<Vec<_>>();
+    vec![Group::new(
+        "nightlight",
+        vec![
+            toggle("n:on", false),
+            time_choice(
+                "n:start",
+                &["18:00", "19:00", "20:00", "21:00", "22:00"],
+                "20:00",
+            ),
+            time_choice(
+                "n:end",
+                &["05:00", "06:00", "07:00", "08:00", "09:00"],
+                "07:00",
+            ),
+            choice("n:temp", &temps, json!(4000)),
         ],
     )]
 }
