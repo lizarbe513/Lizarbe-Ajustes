@@ -79,6 +79,28 @@ impl Paths {
         }
     }
 
+    /// Carpetas de temas: los del usuario (en pruebas, dentro de la carpeta
+    /// de pruebas) y los de Omarchy.
+    pub fn theme_dirs(&self) -> crate::themes::Dirs {
+        crate::themes::Dirs {
+            user: if self.sandbox {
+                self.hypr_dir.join("themes")
+            } else {
+                dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".config/omarchy/themes")
+            },
+            system: self.omarchy_path.join("themes"),
+        }
+    }
+
+    /// Nombre del tema que está en uso.
+    pub fn current_theme(&self) -> String {
+        std::fs::read_to_string(self.theme_dir.with_file_name("theme.name"))
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    }
+
     pub fn theme_colors(&self) -> PathBuf {
         self.theme_dir.join("colors.toml")
     }

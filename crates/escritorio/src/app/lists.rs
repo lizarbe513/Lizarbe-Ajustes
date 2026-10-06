@@ -211,6 +211,7 @@ impl App {
                 )))
             }
             Act::ClearSearch => self.bind_filter.clear(),
+            Act::NewTheme | Act::OpenTheme(_) | Act::CloseTheme => self.theme_act(act),
             Act::AddCompose => {
                 self.popup = Some(Popup::Input(Input::new(
                     t("xc.add"),
@@ -549,6 +550,7 @@ impl App {
                     apps::name_for(&text, self.apps_cached()).unwrap_or_else(|| text.clone());
                 self.add_custom(keys, name, format!("{{ launch = {text:?} }}"));
             }
+            EPick::ThemeBase(name) => self.theme_create(&name, &text),
             EPick::AutostartApp => {
                 if text == PICK_CMD {
                     self.popup = Some(Popup::Input(Input::new(
@@ -594,6 +596,11 @@ impl App {
                     return Err(t("err.url"));
                 }
                 self.add_custom(keys, host, format!("{{ webapp = {url:?} }}"));
+            }
+            EInput::ThemeName => return self.theme_name_entered(&text),
+            EInput::ThemeDuplicate(base) => {
+                let slug = crate::themes::slugify(&text);
+                return self.theme_create_checked(&slug, &base, true);
             }
             EInput::ComposeKeys => {
                 if !crate::xcompose::valid_keys(&text) {
@@ -662,6 +669,18 @@ impl App {
                     .to_string()
             };
             return Some((t("ch.custom_binds"), count(&c.old), count(&c.new)));
+        }
+        if let Some((slug, color)) = c.key.strip_prefix("th:").and_then(|r| r.split_once(':')) {
+            let show = |v: &Option<Value>| match v {
+                None => t("xc.none_value"),
+                Some(v) => v.as_str().unwrap_or_default().to_string(),
+            };
+            let name = t(&format!("th.c.{color}"));
+            return Some((
+                tf("ch.theme", &[("theme", slug), ("color", &name)]),
+                show(&c.old),
+                show(&c.new),
+            ));
         }
         if let Some(keys) = c.key.strip_prefix("xc:") {
             let show = |v: &Option<Value>| match v {
