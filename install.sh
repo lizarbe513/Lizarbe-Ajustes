@@ -35,4 +35,4 @@ ok "Hecho"
 
 echo
 echo -e "\033[32m✔ Lizarbe Ajustes instalado.\033[0m"
-echo "  Menú → Lizarbe, o: lizarbe-escritorio / lizarbe-widgets"
+echo "  Menú → Setup y Style, o: lizarbe-escritorio / lizarbe-widgets"

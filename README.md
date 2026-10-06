@@ -87,14 +87,14 @@ Esto es solo para desarrollo (los usuarios reciben el paquete `lizarbe-ajustes`)
 
 1. compila y copia `lizarbe-escritorio` y `lizarbe-widgets` a `~/.local/bin/`,
 2. registra sus aplicaciones (`~/.local/share/applications/*.desktop`),
-3. llama a `lizarbe-doctor --fix` (paquete `lizarbe-menu`), que conecta el menú de Omarchy (Menu → Lizarbe), las ventanas flotantes y limpia restos de versiones anteriores (meca-qs, Meca).
+3. llama a `lizarbe-doctor --fix` (paquete `lizarbe-menu`), que conecta el menú de Omarchy (Menu → Setup y Style), las ventanas flotantes y limpia restos de versiones anteriores (meca-qs, Meca).
 
 Desinstalar: `./uninstall.sh` (no toca tu configuración de Omarchy).
 
 ## 🕹️ Uso
 
 ```bash
-lizarbe-widgets                     # o Menu → Lizarbe → Widgets y barra
+lizarbe-widgets                     # o Menu → Style → Widgets y barra
 lizarbe-widgets --section plugins   # abrir una sección: bar, widgets, plugins, idle, appearance, changes
 lizarbe-widgets --advanced          # empezar en modo avanzado
 lizarbe-widgets --lang en           # forzar idioma
