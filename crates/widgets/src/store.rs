@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use lizarbe_core::form::FieldStore;
 use lizarbe_core::fsutil::Transaction;
 use serde_json::{Value, json};
 use toml_edit::DocumentMut;
@@ -88,6 +89,24 @@ pub struct Store {
     toml_raw: Option<String>,
     pub toml_error: Option<String>,
     pub ops: Vec<PluginOp>,
+}
+
+impl FieldStore<Bind> for Store {
+    fn get(&self, bind: &Bind) -> Option<Value> {
+        Store::get(self, bind)
+    }
+
+    fn get_original(&self, bind: &Bind) -> Option<Value> {
+        Store::get_original(self, bind)
+    }
+
+    fn set_field(&mut self, bind: &Bind, value: Value, default: Option<&Value>) {
+        Store::set_field(self, bind, value, default)
+    }
+
+    fn unset(&mut self, bind: &Bind) {
+        Store::unset(self, bind)
+    }
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -678,7 +697,7 @@ mod tests {
         assert!(toml.starts_with("# mío\n"));
         assert!(toml.contains("background-alpha = 0.8"));
         assert!(!s.dirty());
-        assert!(!d.path().join(".shell.json.meca-qs.tmp").exists());
+        assert!(!d.path().join(".shell.json.lizarbe.tmp").exists());
     }
 
     #[test]

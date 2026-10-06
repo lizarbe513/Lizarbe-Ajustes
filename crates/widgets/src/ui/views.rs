@@ -2,24 +2,24 @@
 //! líneas y controles en relieve (estilo Meca), columnas de widgets, lista de
 //! plugins y botones 3D Restaurar · Cancelar · Aplicar.
 
+use lizarbe_core::ui::{center, right_align};
+use lizarbe_core::view::{self, ButtonSpec, Ctx, FormOpts, RowInfo};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Borders};
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
-use super::form::{self, FieldRow, NoteKind, Row};
-use super::{center, fg, hovered, pad, put, right_align, truncate, wrap};
-use lizarbe_core::ui::{bevel_box, button_look, inner_style, tone};
-use crate::app::{App, Button, Focus, Hit, PluginRow, Section, Sub};
+use super::form::FieldRow;
+use super::popup::Popup;
+use super::{ctx, fg, hovered, pad, put, truncate, wrap};
+use crate::app::{App, Button, Focus, Hit, PluginRow, Section};
 use crate::i18n::{t, tf};
 use crate::omarchy::curated;
-use crate::omarchy::qt_format;
-use crate::omarchy::schema::{self, Kind, value_label};
+use crate::omarchy::schema::{self, value_label};
 use crate::omarchy::shell_json as sj;
-use lizarbe_core::theme::hex;
 use crate::store::Bind;
 
 /// Alto de la zona de botones: separador + botones de 3 líneas.
@@ -35,36 +35,7 @@ pub(super) fn draw_content(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Encabezado: título en mayúsculas, descripción y separador.
     let (title, desc) = section_header(app);
-    put(
-        f,
-        x,
-        area.y,
-        vec![
-            Span::styled(
-                if focused { "▍" } else { " " },
-                fg(app.pal.accent).add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                truncate(&title.to_uppercase(), w as usize - 1),
-                fg(app.pal.bright).add_modifier(Modifier::BOLD),
-            ),
-        ],
-    );
-    put(
-        f,
-        x,
-        area.y + 1,
-        vec![Span::styled(
-            truncate(&format!(" {desc}"), w as usize),
-            fg(app.pal.muted),
-        )],
-    );
-    put(
-        f,
-        x,
-        area.y + 2,
-        vec![Span::styled("─".repeat(w as usize), fg(app.pal.muted))],
-    );
+    view::section_header(f, &app.pal, Rect::new(x, area.y, w, 3), &title, &desc, focused);
 
     let body = Rect::new(x, area.y + 3, w, area.height.saturating_sub(3 + BUTTONS_H));
     match app.section {
@@ -105,12 +76,14 @@ fn section_header(app: &App) -> (String, String) {
 
 fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
     let focused = app.focus == Focus::Buttons && app.popup.is_none();
-    let labels: Vec<String> = Button::ALL.iter().map(|b| b.label()).collect();
-    let gap = 2u16;
-    let total: u16 =
-        labels.iter().map(|l| l.width() as u16 + 2).sum::<u16>() + gap * (labels.len() as u16 - 1);
-    let start = area.right().saturating_sub(total + 1);
-
+    let buttons: Vec<ButtonSpec> = Button::ALL
+        .iter()
+        .map(|b| ButtonSpec {
+            label: b.label(),
+            enabled: app.button_enabled(*b),
+            primary: *b == Button::Apply,
+        })
+        .collect();
     // A la izquierda: estado de los cambios pendientes.
     let pending = app.store.changes().len() + app.store.ops.len();
     let (status, color) = if pending > 0 {
@@ -121,306 +94,49 @@ fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
     } else {
         (format!("✓ {}", t("btn.clean")), app.pal.muted)
     };
-    let status_w = start.saturating_sub(area.x + 1) as usize;
-    if status_w > 6 {
-        put(
-            f,
-            area.x,
-            area.y + 1,
-            vec![Span::styled(
-                truncate(&format!(" {status}"), status_w),
-                fg(color),
-            )],
-        );
-    }
-
-    let mut x = start;
-    for (i, (b, label)) in Button::ALL.iter().zip(labels).enumerate() {
-        let inner_w = label.width();
-        let hit = Hit::Button(i);
-        let hover = hovered(app, hit);
-        let selected = focused && app.button == i;
-        let enabled = app.button_enabled(*b);
-        let primary = *b == Button::Apply && enabled;
-        let (border, shadow, text) = button_look(&app.pal, enabled, hover, selected, primary);
-        bevel_box(
-            f,
-            x,
-            area.y,
-            vec![Span::styled(label, text)],
-            inner_w,
-            border,
-            shadow,
-            selected || primary || hover,
-        );
-        app.hits
-            .push((Rect::new(x, area.y, inner_w as u16 + 2, 3), hit));
-        x += inner_w as u16 + 2 + gap;
-    }
+    let selected = focused.then_some(app.button);
+    view::draw_buttons(f, &mut ctx(app), area, &buttons, selected, (&status, color));
 }
 
 // ---------------------------------------------------------------- formularios
 
-/// Tipo de control que se dibuja a la derecha de una fila.
-enum Ctl {
-    Toggle(bool),
-    Stepper(String),
-    Slider { frac: f64, text: String },
-    Select(String),
-    Edit(String),
-    Color(Option<Color>, String),
-    Run(String),
-}
-
-fn control_for(row: &Row) -> Option<Ctl> {
-    match row {
-        Row::Action(..) => Some(Ctl::Run(t("ctl.run"))),
-        Row::Field(fr) => Some(field_control(fr)),
-        _ => None,
-    }
-}
-
-fn field_control(fr: &FieldRow) -> Ctl {
-    let def = &fr.def;
-    let v = fr.effective();
-    match &def.kind {
-        Kind::Bool => Ctl::Toggle(v.and_then(Value::as_bool).unwrap_or(false)),
-        Kind::Enum(_) | Kind::Multi(_) => Ctl::Select(form::display_value(fr)),
-        _ if !def.presets.is_empty() => {
-            let text = match v {
-                Some(Value::String(s)) if def.date_format => qt_format::preview(s),
-                _ => form::display_value(fr),
-            };
-            Ctl::Select(text)
-        }
-        Kind::Float {
-            min: Some(min),
-            max: Some(max),
-            ..
-        } => {
-            let n = v.or(def.example.as_ref()).and_then(Value::as_f64);
-            let frac = n
-                .map(|n| ((n - min) / (max - min).max(1e-9)).clamp(0.0, 1.0))
-                .unwrap_or(0.0);
-            Ctl::Slider {
-                frac,
-                text: n.map(|n| format!("{n:.2}")).unwrap_or_else(|| "—".into()),
-            }
-        }
-        Kind::Int { .. } | Kind::Float { .. } => Ctl::Stepper(match v {
-            Some(n) => value_label(n),
-            None => def
-                .example
-                .as_ref()
-                .map(|e| format!("({})", value_label(e)))
-                .unwrap_or_else(|| "—".into()),
-        }),
-        Kind::Color => {
-            let s = v.and_then(Value::as_str).unwrap_or("").to_string();
-            Ctl::Color(hex(&s), if s.is_empty() { "—".into() } else { s })
-        }
-        _ => Ctl::Edit(match v {
-            None => def
-                .example
-                .as_ref()
-                .map(|e| format!("({})", value_label(e)))
-                .unwrap_or_else(|| "—".into()),
-            Some(Value::String(s)) if s.is_empty() => format!("({})", t("val.empty")),
-            Some(Value::String(s)) => schema::escape_newlines(s),
-            Some(other) => other.to_string(),
-        }),
-    }
-}
-
-/// Ancho que ocupa el control (sin contar el margen).
-fn ctl_width(c: &Ctl, cap: usize) -> usize {
-    let boxed = |text: &str, extra: usize| text.width().min(cap) + extra + 2;
-    match c {
-        Ctl::Toggle(_) => 5 + 1 + t("val.on").width().max(t("val.off").width()) + 1,
-        Ctl::Stepper(_) => 17,
-        Ctl::Slider { .. } => 17,
-        Ctl::Select(s) | Ctl::Edit(s) => boxed(s, 4),
-        Ctl::Color(_, s) => boxed(s, 7),
-        Ctl::Run(s) => boxed(s, 4),
-    }
-}
-
-fn row_height(row: &Row, width: usize) -> usize {
-    match row {
-        Row::Note(text, _) => wrap(text, width.saturating_sub(4)).len(),
-        Row::Header(_) => 2,
-        _ => 3,
-    }
-}
-
-fn row_hovered(app: &App, i: usize) -> bool {
-    app.popup.is_none() && matches!(app.hover, Some(Hit::Row(r)) | Some(Hit::Ctrl(r, _)) if r == i)
-}
-
 fn draw_form(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let rows = app.rows();
-    let st = if app.section == Section::Widgets {
-        &mut app.widgets.form
+    let opts = FormOpts {
+        focused,
+        dropdown_open: matches!(&app.popup, Some(Popup::Picker(p)) if p.anchor.is_some()),
+    };
+    let advanced = app.advanced;
+    let App {
+        store,
+        pal,
+        hover,
+        hits,
+        popup,
+        forms,
+        widgets,
+        section,
+        ..
+    } = app;
+    let st = if *section == Section::Widgets {
+        &mut widgets.form
     } else {
-        &mut app.forms[app.section.index()]
+        &mut forms[section.index()]
     };
-    st.clamp(&rows);
-    let sel = st.sel;
-    let width = area.width as usize;
-    let heights: Vec<usize> = rows.iter().map(|r| row_height(r, width)).collect();
-    if st.offset > sel {
-        st.offset = sel;
-    }
-    while st.offset < sel && heights[st.offset..=sel].iter().sum::<usize>() > area.height as usize {
-        st.offset += 1;
-    }
-    // Si justo encima hay un encabezado, muéstralo también.
-    if st.offset > 0
-        && st.offset == sel
-        && matches!(rows.get(sel - 1), Some(Row::Header(_)))
-        && heights[sel - 1..=sel].iter().sum::<usize>() <= area.height as usize
-    {
-        st.offset -= 1;
-    }
-    let offset = st.offset;
-
-    let mut y = area.y;
-    for (i, row) in rows.iter().enumerate().skip(offset) {
-        let h = heights[i] as u16;
-        if y + h > area.bottom() {
-            // Indicador de que hay más contenido debajo.
-            put(
-                f,
-                area.right().saturating_sub(3),
-                area.bottom().saturating_sub(1),
-                vec![Span::styled(" ▾ ", fg(app.pal.accent))],
-            );
-            break;
-        }
-        match row {
-            Row::Header(text) => {
-                let title = format!(" ━━ {text} ");
-                let rest = width.saturating_sub(title.width() + 1);
-                put(
-                    f,
-                    area.x,
-                    y,
-                    vec![Span::styled(
-                        format!("{title}{}", "━".repeat(rest)),
-                        fg(app.pal.accent).add_modifier(Modifier::BOLD),
-                    )],
-                );
-            }
-            Row::Note(text, kind) => {
-                let (icon, color) = match kind {
-                    NoteKind::Info => ("", app.pal.muted),
-                    NoteKind::Warn => ("", app.pal.warn),
-                };
-                for (n, l) in wrap(text, width.saturating_sub(4)).into_iter().enumerate() {
-                    put(
-                        f,
-                        area.x,
-                        y + n as u16,
-                        vec![
-                            Span::styled(
-                                if n == 0 {
-                                    format!(" {icon} ")
-                                } else {
-                                    "   ".into()
-                                },
-                                fg(color),
-                            ),
-                            Span::styled(l, fg(color)),
-                        ],
-                    );
-                }
-            }
-            Row::Field(_) | Row::Action(..) => {
-                draw_item(f, app, area, y, i, row, i == sel && focused, i == sel)
-            }
-        }
-        y += h;
-    }
-}
-
-/// Fila de 3 líneas: nombre y descripción a la izquierda, control a la derecha.
-#[allow(clippy::too_many_arguments)]
-fn draw_item(
-    f: &mut Frame,
-    app: &mut App,
-    area: Rect,
-    y: u16,
-    i: usize,
-    row: &Row,
-    focused_sel: bool,
-    is_cursor: bool,
-) {
-    let width = area.width as usize;
-    let hover_row = row_hovered(app, i);
-    let lit = focused_sel || hover_row;
-    let Some(ctl) = control_for(row) else { return };
-    let cap = (width / 2).clamp(10, 34);
-    let cw = ctl_width(&ctl, cap);
-    let left_w = width.saturating_sub(cw + 3).max(12);
-
-    let (name, desc, changed) = match row {
-        Row::Field(fr) => (
-            fr.def.label.clone(),
-            fr.def.desc.clone(),
-            app.store.get_original(&fr.bind) != fr.value,
-        ),
-        Row::Action(label, _) => (label.clone(), String::new(), false),
-        _ => return,
+    let mut ctx = Ctx {
+        pal,
+        hover: *hover,
+        hits,
+        blocked: popup.is_some(),
     };
-    let desc_lines = wrap(&desc, left_w.saturating_sub(6));
-
-    // Línea 1: nombre (con ● si tiene un cambio sin aplicar).
-    let mark = if lit { " ▌ " } else { "   " };
-    let dot = if changed { " ●" } else { "" };
-    let name_w = left_w.saturating_sub(mark.width() + dot.width());
-    let name_style = if lit {
-        Style::new()
-            .fg(app.pal.bright)
-            .bg(app.pal.soft_selection)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        fg(app.pal.bright).add_modifier(Modifier::BOLD)
-    };
-    let mut l1 = vec![
-        Span::styled(mark, name_style.fg(app.pal.accent)),
-        Span::styled(pad(&name, name_w), name_style),
-    ];
-    if changed {
-        l1.push(Span::styled(dot, name_style.fg(app.pal.warn)));
-    }
-    put(f, area.x, y, l1);
-
-    // Línea 2: descripción (└─ cuando está activa, como en Meca).
-    let first = desc_lines.first().cloned().unwrap_or_default();
-    let l2 = if lit {
-        vec![
-            Span::styled(" ▌ ", fg(app.pal.accent)),
-            Span::styled(
-                pad(&format!("└─ {first}"), left_w.saturating_sub(3)),
-                fg(app.pal.fg),
-            ),
-        ]
-    } else {
-        vec![Span::styled(
-            pad(&format!("   {first}"), left_w),
-            fg(app.pal.muted),
-        )]
-    };
-    put(f, area.x, y + 1, l2);
-
-    // Línea 3: solo en la fila del cursor, información extra.
-    if is_cursor {
-        let extra = match row {
-            Row::Field(fr) if fr.def.date_format => fr
-                .effective()
+    let info = |fr: &FieldRow| RowInfo {
+        changed: store.get_original(&fr.bind) != fr.value,
+        extra: if fr.def.preview.is_some() {
+            fr.effective()
                 .and_then(Value::as_str)
-                .map(|s| format!("{}: {}", t("ctl.format"), schema::escape_newlines(s))),
-            Row::Field(fr) if app.advanced => Some(format!(
+                .map(|s| format!("{}: {}", t("ctl.format"), schema::escape_newlines(s)))
+        } else if advanced {
+            Some(format!(
                 "{}: {} · {}: {}",
                 t("help.key"),
                 match &fr.bind {
@@ -434,217 +150,12 @@ fn draw_item(
                     .map(value_label)
                     .filter(|s| !s.is_empty())
                     .unwrap_or_else(|| "—".into())
-            )),
-            _ => desc_lines.get(1).cloned(),
-        };
-        if let Some(extra) = extra {
-            put(
-                f,
-                area.x,
-                y + 2,
-                vec![Span::styled(
-                    pad(&format!("      {extra}"), left_w),
-                    fg(app.pal.muted),
-                )],
-            );
-        }
-    }
-    app.hits
-        .push((Rect::new(area.x, y, left_w as u16 + 1, 3), Hit::Row(i)));
-
-    // Control a la derecha.
-    let cx = area.x + left_w as u16 + 1;
-    draw_control(f, app, cx, y, i, &ctl, cap, lit);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn draw_control(
-    f: &mut Frame,
-    app: &mut App,
-    x: u16,
-    y: u16,
-    i: usize,
-    ctl: &Ctl,
-    cap: usize,
-    lit: bool,
-) {
-    let hov = |app: &App, s: Sub| hovered(app, Hit::Ctrl(i, s));
-    match ctl {
-        Ctl::Toggle(on) => {
-            let h = hov(app, Sub::Main);
-            let tn = tone(&app.pal, lit, h);
-            let mark_bg = tn.bg.or(if *on {
-                Some(app.pal.soft_selection)
-            } else {
-                None
-            });
-            let mut mark = Style::new().fg(if *on || h {
-                app.pal.bright
-            } else {
-                app.pal.muted
-            });
-            if let Some(bg) = mark_bg {
-                mark = mark.bg(bg);
-            }
-            if *on || h {
-                mark = mark.add_modifier(Modifier::BOLD);
-            }
-            bevel_box(
-                f,
-                x,
-                y,
-                vec![Span::styled(if *on { " ■ " } else { "   " }, mark)],
-                3,
-                tn.border,
-                tn.shadow,
-                tn.bold,
-            );
-            let label = if *on { t("val.on") } else { t("val.off") };
-            put(
-                f,
-                x + 5,
-                y + 1,
-                vec![Span::styled(
-                    format!(" {label}"),
-                    if *on || h {
-                        fg(app.pal.bright).add_modifier(Modifier::BOLD)
-                    } else {
-                        fg(app.pal.muted)
-                    },
-                )],
-            );
-            let w = 6 + label.width() as u16;
-            app.hits
-                .push((Rect::new(x, y, w, 3), Hit::Ctrl(i, Sub::Main)));
-        }
-        Ctl::Stepper(text) => {
-            for (dx, s, sym) in [(0u16, Sub::Minus, " - "), (12u16, Sub::Plus, " + ")] {
-                let h = hov(app, s);
-                let tn = tone(&app.pal, lit, h);
-                bevel_box(
-                    f,
-                    x + dx,
-                    y,
-                    vec![Span::styled(sym, inner_style(&app.pal, &tn))],
-                    3,
-                    tn.border,
-                    tn.shadow,
-                    tn.bold,
-                );
-                app.hits.push((Rect::new(x + dx, y, 5, 3), Hit::Ctrl(i, s)));
-            }
-            let h = hov(app, Sub::Main);
-            let mut st =
-                fg(if h { app.pal.accent } else { app.pal.bright }).add_modifier(Modifier::BOLD);
-            if h {
-                st = st.bg(app.pal.soft_hover);
-            }
-            put(
-                f,
-                x + 5,
-                y + 1,
-                vec![Span::styled(center(&truncate(text, 7), 7), st)],
-            );
-            app.hits
-                .push((Rect::new(x + 5, y, 7, 3), Hit::Ctrl(i, Sub::Main)));
-        }
-        Ctl::Slider { frac, text } => {
-            let h = hov(app, Sub::Slider);
-            let pos = (frac * 10.0).round() as usize;
-            let track = format!("{}●{}", "─".repeat(pos), "─".repeat(10 - pos));
-            let st = if h {
-                fg(app.pal.accent).add_modifier(Modifier::BOLD)
-            } else if lit {
-                fg(app.pal.bright).add_modifier(Modifier::BOLD)
-            } else {
-                fg(app.pal.fg)
-            };
-            let hv = hov(app, Sub::Main);
-            let mut vst = fg(app.pal.bright).add_modifier(Modifier::BOLD);
-            if hv {
-                vst = vst.fg(app.pal.accent).bg(app.pal.soft_hover);
-            }
-            put(
-                f,
-                x,
-                y + 1,
-                vec![
-                    Span::styled(track, st),
-                    Span::styled(format!(" {}", right_align(text, 5)), vst),
-                ],
-            );
-            app.hits
-                .push((Rect::new(x, y, 11, 3), Hit::Ctrl(i, Sub::Slider)));
-            app.hits
-                .push((Rect::new(x + 11, y, 6, 3), Hit::Ctrl(i, Sub::Main)));
-        }
-        Ctl::Select(text) | Ctl::Edit(text) | Ctl::Run(text) => {
-            let h = hov(app, Sub::Main)
-                || (matches!(ctl, Ctl::Select(_))
-                    && matches!(&app.popup, Some(super::popup::Popup::Picker(p)) if p.anchor.is_some())
-                    && is_cursor_row(app, i));
-            let tn = tone(&app.pal, lit, h);
-            let suffix = match ctl {
-                Ctl::Select(_) => " ▾ ",
-                Ctl::Edit(_) => " ✎ ",
-                _ => " ▸ ",
-            };
-            let body = format!(" {}{suffix}", truncate(text, cap));
-            let inner_w = body.width();
-            bevel_box(
-                f,
-                x,
-                y,
-                vec![Span::styled(body, inner_style(&app.pal, &tn))],
-                inner_w,
-                tn.border,
-                tn.shadow,
-                tn.bold,
-            );
-            app.hits.push((
-                Rect::new(x, y, inner_w as u16 + 2, 3),
-                Hit::Ctrl(i, Sub::Main),
-            ));
-        }
-        Ctl::Color(c, text) => {
-            let h = hov(app, Sub::Main);
-            let tn = tone(&app.pal, lit, h);
-            let st = inner_style(&app.pal, &tn);
-            let mut swatch = Style::new().fg(c.unwrap_or(app.pal.dim));
-            if let Some(bg) = tn.bg {
-                swatch = swatch.bg(bg);
-            }
-            let label = format!(" {} ✎ ", truncate(text, cap));
-            let inner_w = 3 + label.width();
-            bevel_box(
-                f,
-                x,
-                y,
-                vec![
-                    Span::styled(" ", st),
-                    Span::styled("██", swatch),
-                    Span::styled(label, st),
-                ],
-                inner_w,
-                tn.border,
-                tn.shadow,
-                tn.bold,
-            );
-            app.hits.push((
-                Rect::new(x, y, inner_w as u16 + 2, 3),
-                Hit::Ctrl(i, Sub::Main),
-            ));
-        }
-    }
-}
-
-fn is_cursor_row(app: &App, i: usize) -> bool {
-    let st = if app.section == Section::Widgets {
-        &app.widgets.form
-    } else {
-        &app.forms[app.section.index()]
+            ))
+        } else {
+            None
+        },
     };
-    st.sel == i
+    view::draw_form(f, &mut ctx, area, &rows, st, &opts, info);
 }
 
 // ---------------------------------------------------------------- widgets

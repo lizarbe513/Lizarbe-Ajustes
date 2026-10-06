@@ -74,19 +74,19 @@ fn curated_widget_fields(id: &str, entry: &Value) -> Vec<FieldDef> {
             field("format", p, Kind::Text)
                 .default(json!("dddd HH:mm"))
                 .presets(date_presets(&CLOCK_FORMATS))
-                .date_format(),
+                .preview(super::qt_format::preview),
             field("formatAlt", p, Kind::Text)
                 .default(json!("d MMMM 'W'ww yyyy"))
                 .presets(date_presets(&CLOCK_FORMATS))
-                .date_format(),
+                .preview(super::qt_format::preview),
             field("verticalFormat", p, Kind::Text)
                 .default(json!("HH\n—\nmm"))
                 .presets(date_presets(&VERTICAL_CLOCK_FORMATS))
-                .date_format(),
+                .preview(super::qt_format::preview),
             field("verticalFormatAlt", p, Kind::Text)
                 .default(json!("dd\nMMM\n'W'ww\n''yy"))
                 .presets(date_presets(&VERTICAL_CLOCK_FORMATS))
-                .date_format()
+                .preview(super::qt_format::preview)
                 .advanced(),
             field(
                 "weekStartDay",
@@ -273,42 +273,16 @@ pub fn idle_fields() -> Vec<FieldDef> {
     ]
 }
 
-/// "2 min 30 s", "1 h", …
-pub fn human_seconds(s: i64) -> String {
-    if s <= 0 {
-        return t("time.immediate");
-    }
-    let h = s / 3600;
-    let m = (s % 3600) / 60;
-    let sec = s % 60;
-    let mut parts = vec![];
-    if h > 0 {
-        parts.push(format!("{h} h"));
-    }
-    if m > 0 {
-        parts.push(format!("{m} min"));
-    }
-    if sec > 0 {
-        parts.push(format!("{sec} s"));
-    }
-    parts.join(" ")
-}
+pub use lizarbe_core::schema::human_seconds;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn human_time() {
-        assert_eq!(human_seconds(150), "2 min 30 s");
-        assert_eq!(human_seconds(3600), "1 h");
-        assert_eq!(human_seconds(45), "45 s");
-    }
-
-    #[test]
     fn clock_has_format_fields() {
         let f = widget_fields("omarchy.clock", &json!({"id": "omarchy.clock"}), None);
-        assert!(f.iter().any(|x| x.key == "format" && x.date_format));
+        assert!(f.iter().any(|x| x.key == "format" && x.preview.is_some()));
         // Un clon también.
         let f = widget_fields("leo.clock", &json!({"id": "leo.clock"}), None);
         assert!(f.iter().any(|x| x.key == "formatAlt"));

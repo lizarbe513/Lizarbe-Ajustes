@@ -23,9 +23,11 @@ use crate::omarchy::shell_toml as st;
 use crate::store::{Bind, Scope, Store};
 use crate::ui::form::{self, Act, FieldRow, FormState, NoteKind, Row};
 use crate::ui::popup::{
-    Checklist, Confirm, Input, InputTarget, Menu, MenuAct, MenuItem, Outcome, PickItem, PickTarget,
-    Picker, Popup, fold,
+    Checklist, Confirm, HelpContent, Input, InputTarget, Menu, MenuAct, MenuItem, Outcome,
+    PickItem, PickTarget, Picker, Popup, WInput, WPick, fold,
 };
+use lizarbe_core::view::CoreHit;
+pub use lizarbe_core::view::Sub;
 
 /// Marcadores de opciones especiales en los selectores.
 const PICK_CUSTOM: &str = "\u{0}custom";
@@ -161,13 +163,40 @@ pub enum Hit {
     Button(usize),
 }
 
-/// Parte de un control sobre la que está el ratón.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Sub {
-    Main,
-    Minus,
-    Plus,
-    Slider,
+impl CoreHit for Hit {
+    fn row(i: usize) -> Self {
+        Hit::Row(i)
+    }
+    fn ctrl(i: usize, sub: Sub) -> Self {
+        Hit::Ctrl(i, sub)
+    }
+    fn button(i: usize) -> Self {
+        Hit::Button(i)
+    }
+    fn sidebar(i: usize) -> Self {
+        Hit::Sidebar(i)
+    }
+    fn mode_toggle() -> Self {
+        Hit::ModeToggle
+    }
+    fn lang_toggle() -> Self {
+        Hit::LangToggle
+    }
+    fn popup_item(i: usize) -> Self {
+        Hit::PopupItem(i)
+    }
+    fn modal_button(i: usize) -> Self {
+        Hit::ModalButton(i)
+    }
+    fn menu_item(i: usize) -> Self {
+        Hit::MenuItem(i)
+    }
+    fn row_index(&self) -> Option<usize> {
+        match self {
+            Hit::Row(i) | Hit::Ctrl(i, _) => Some(*i),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -657,7 +686,10 @@ impl App {
         match key.code {
             KeyCode::Char('q') => return self.request_quit(),
             KeyCode::Char('?') => {
-                self.popup = Some(Popup::Help { scroll: 0 });
+                self.popup = Some(Popup::Help {
+                    scroll: 0,
+                    content: help_content(),
+                });
                 return;
             }
             KeyCode::Char('a') => return self.request_apply(),
@@ -940,7 +972,7 @@ impl App {
                 })
             );
         }
-        if def.date_format {
+        if def.preview.is_some() {
             hint = format!("{hint}\n{}", t("input.date_hint"));
         }
         self.popup = Some(Popup::Input(Input::new(
@@ -961,7 +993,7 @@ impl App {
                     t("w.raw_add"),
                     t("input.key_hint"),
                     "",
-                    InputTarget::NewRawKey { entry },
+                    InputTarget::App(WInput::NewRawKey { entry }),
                 )))
             }
             Act::CreateQmlTemplate(id) => {
@@ -1159,7 +1191,7 @@ impl App {
             sel,
             filter: String::new(),
             current: None,
-            target: PickTarget::AddWidget { at },
+            target: PickTarget::App(WPick::AddWidget { at }),
         }));
     }
 
@@ -1246,7 +1278,7 @@ impl App {
                     t("pl.add"),
                     t("pl.add.hint"),
                     "",
-                    InputTarget::GitUrl,
+                    InputTarget::App(WInput::GitUrl),
                 )));
             }
             KeyCode::Char('p') => {
@@ -1508,14 +1540,14 @@ impl App {
                     self.store.set_field(&bind, value, def.default.as_ref());
                 }
             }
-            PickTarget::AddWidget { at } => {
+            PickTarget::App(WPick::AddWidget { at }) => {
                 if value == json!(PICK_CMD) || value == json!(PICK_QML) {
                     let qml = value == json!(PICK_QML);
                     self.popup = Some(Popup::Input(Input::new(
                         t(if qml { "add.qml" } else { "add.command" }),
                         t("input.module_id_hint"),
                         "",
-                        InputTarget::NewModule { qml, at },
+                        InputTarget::App(WInput::NewModule { qml, at }),
                     )));
                     return;
                 }
@@ -1549,7 +1581,7 @@ impl App {
                     Err(code) => self.input_error(form::input_error(&def.kind, &code)),
                 }
             }
-            InputTarget::NewRawKey { entry } => {
+            InputTarget::App(WInput::NewRawKey { entry }) => {
                 let k = text.trim().to_string();
                 if k.is_empty() || k == "id" || k.contains(char::is_whitespace) {
                     return self.input_error(t("err.key"));
@@ -1558,17 +1590,17 @@ impl App {
                     k.clone(),
                     t("input.raw_hint"),
                     "",
-                    InputTarget::RawValue { entry, key: k },
+                    InputTarget::App(WInput::RawValue { entry, key: k }),
                 )));
             }
-            InputTarget::RawValue { entry, key: k } => {
+            InputTarget::App(WInput::RawValue { entry, key: k }) => {
                 let Bind::Json(mut path) = entry else { return };
                 path.push(key(&k));
                 let v = schema::parse_input(&Kind::Raw, &text).unwrap_or(Value::Null);
                 self.store.set(&Bind::Json(path), v);
                 self.popup = None;
             }
-            InputTarget::GitUrl => {
+            InputTarget::App(WInput::GitUrl) => {
                 let url = text.trim().to_string();
                 if url.is_empty() {
                     return self.input_error(t("err.url"));
@@ -1576,7 +1608,7 @@ impl App {
                 self.popup = None;
                 self.exec_omarchy(&["plugin", "add", &url]);
             }
-            InputTarget::NewModule { qml, at } => {
+            InputTarget::App(WInput::NewModule { qml, at }) => {
                 let id = text.trim().to_string();
                 let valid = !id.is_empty()
                     && id
@@ -1876,6 +1908,8 @@ impl App {
             label,
             act,
             enabled,
+            // Antes de las acciones generales va una línea separadora.
+            separator: act == MenuAct::Apply,
         };
         match hit {
             Some(Hit::Row(i)) | Some(Hit::Ctrl(i, _)) => {
@@ -2075,7 +2109,10 @@ impl App {
             MenuAct::Apply => self.request_apply(),
             MenuAct::Cancel => self.request_discard(),
             MenuAct::Restore => self.request_restore(),
-            MenuAct::Help => self.popup = Some(Popup::Help { scroll: 0 }),
+            MenuAct::Help => self.popup = Some(Popup::Help {
+                    scroll: 0,
+                    content: help_content(),
+                }),
         }
     }
 
@@ -2189,6 +2226,64 @@ impl TuiApp for App {
 
     fn should_quit(&self) -> bool {
         self.quit
+    }
+}
+
+/// Contenido de la ventana de ayuda (`?`).
+fn help_content() -> HelpContent {
+    HelpContent {
+        sections: vec![
+            (
+                t("help.general"),
+                vec![
+                    ("Tab / ⇧+Tab".into(), t("help.focus")),
+                    ("Esc".into(), t("help.back")),
+                    ("1-6".into(), t("help.jump")),
+                    ("↑↓ / j k".into(), t("help.nav")),
+                    ("← → / h l".into(), t("help.change")),
+                    (format!("Enter / {}", t("key.space")), t("help.activate")),
+                    (format!("r / {}", t("key.del")), t("help.reset")),
+                    ("o".into(), t("help.menu")),
+                    ("a".into(), t("help.apply")),
+                    ("c".into(), t("help.discard")),
+                    ("R".into(), t("help.restore")),
+                    ("m".into(), t("help.mode")),
+                    ("i".into(), t("help.lang")),
+                    ("q".into(), t("help.quit")),
+                ],
+            ),
+            (
+                t("help.mouse"),
+                vec![
+                    (t("help.m.hover"), t("help.m.hover.desc")),
+                    (t("help.m.click"), t("help.m.click.desc")),
+                    (t("help.m.right"), t("help.m.right.desc")),
+                    (t("help.m.wheel"), t("help.m.wheel.desc")),
+                    (t("help.m.drag"), t("help.w.drag")),
+                ],
+            ),
+            (
+                t("sec.widgets"),
+                vec![
+                    (format!("⇧+{} / H J K L", t("key.arrows")), t("help.w.move")),
+                    ("n".into(), t("help.w.add")),
+                    (format!("d / {}", t("key.del")), t("help.w.remove")),
+                ],
+            ),
+            (
+                t("sec.plugins"),
+                vec![
+                    ("Enter".into(), t("help.p.toggle")),
+                    ("/".into(), t("help.p.filter")),
+                    ("n".into(), t("help.p.add")),
+                    ("p".into(), t("help.p.clone")),
+                    ("u / U".into(), t("help.p.update")),
+                    ("x".into(), t("help.p.remove")),
+                    ("e".into(), t("help.p.edit")),
+                ],
+            ),
+        ],
+        footer: t("help.modes"),
     }
 }
 

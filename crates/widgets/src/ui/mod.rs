@@ -4,17 +4,15 @@
 //! reacciona al pasar el ratón.
 
 pub mod form;
-mod modal;
 pub mod popup;
 mod views;
 
 use lizarbe_core::ui::{Hint, header_bar, status_bar};
-pub(crate) use lizarbe_core::ui::{center, fg, pad, put, right_align, truncate, wrap};
+pub(crate) use lizarbe_core::ui::{fg, pad, put, truncate, wrap};
+use lizarbe_core::view::{Ctx, SideItem, SideToggle};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Span;
-use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Focus, Hit, Section};
 use crate::i18n::{self, t, tf};
@@ -46,8 +44,24 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     views::draw_content(f, app, content);
     draw_footer(f, app, footer);
 
-    if app.popup.is_some() {
-        modal::draw(f, app, area);
+    if let Some(popup) = app.popup.as_mut() {
+        let mut ctx = Ctx {
+            pal: &app.pal,
+            hover: app.hover,
+            hits: &mut app.hits,
+            blocked: false,
+        };
+        lizarbe_core::modal::draw(f, &mut ctx, area, popup);
+    }
+}
+
+/// Contexto de dibujo para las piezas del núcleo.
+pub(crate) fn ctx(app: &mut App) -> Ctx<'_, Hit> {
+    Ctx {
+        pal: &app.pal,
+        hover: app.hover,
+        hits: &mut app.hits,
+        blocked: app.popup.is_some(),
     }
 }
 
@@ -97,134 +111,51 @@ const CATEGORIES: [(&str, &[Section]); 3] = [
 ];
 
 fn draw_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
-    let w = area.width as usize;
     let active = app.focus == Focus::Sidebar && app.popup.is_none();
-    let mut y = area.y;
-    for (n, (cat, sections)) in CATEGORIES.iter().enumerate() {
-        if n > 0 {
-            y += 1;
-        }
-        if y >= area.bottom() {
-            break;
-        }
-        put(
-            f,
-            area.x,
-            y,
-            vec![Span::styled(
-                pad(&format!(" {}", t(cat).to_uppercase()), w),
-                fg(app.pal.muted).add_modifier(Modifier::BOLD),
-            )],
-        );
-        y += 1;
-        for s in sections.iter() {
-            if y >= area.bottom() {
-                break;
-            }
-            let i = s.index();
-            let hit = Hit::Sidebar(i);
-            let hover = hovered(app, hit);
-            let selected = *s == app.section;
-            let mut title = s.title();
-            if *s == Section::Changes && app.store.dirty() {
-                title.push_str(&format!(
-                    " ({})",
-                    app.store.changes().len() + app.store.ops.len()
-                ));
-            }
-            let prefix = if hover { " ▸" } else { "  " };
-            let text = pad(&format!("{prefix}{}  {title}", s.icon()), w);
-            let strong = |bg: Color| {
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD)
-            };
-            let style = if selected && (active || hover) {
-                strong(app.pal.soft_selection)
-            } else if selected || hover {
-                strong(app.pal.soft_muted)
-            } else {
-                fg(app.pal.fg)
-            };
-            put(f, area.x, y, vec![Span::styled(text, style)]);
-            app.hits.push((Rect::new(area.x, y, area.width, 1), hit));
-            y += 1;
-        }
-    }
-
-    // Interruptores de modo e idioma al pie del sidebar, también clicables.
-    let bottom = area.bottom();
-    if bottom < y + 4 {
-        return;
-    }
-    put(
-        f,
-        area.x,
-        bottom - 3,
-        vec![Span::styled(
-            format!(" {}", "─".repeat(w.saturating_sub(2))),
-            fg(app.pal.muted),
-        )],
-    );
+    let pending = app.store.changes().len() + app.store.ops.len();
+    let categories: Vec<(String, Vec<SideItem>)> = CATEGORIES
+        .iter()
+        .map(|(cat, sections)| {
+            let items = sections
+                .iter()
+                .map(|s| {
+                    let mut title = s.title();
+                    if *s == Section::Changes && app.store.dirty() {
+                        title.push_str(&format!(" ({pending})"));
+                    }
+                    SideItem {
+                        icon: s.icon(),
+                        title,
+                        selected: *s == app.section,
+                    }
+                })
+                .collect();
+            (t(cat), items)
+        })
+        .collect();
     let toggles = [
-        (
-            Hit::ModeToggle,
-            "󰘵",
-            t("side.mode"),
-            if app.advanced {
+        SideToggle {
+            hit: Hit::ModeToggle,
+            icon: "󰘵",
+            label: t("side.mode"),
+            value: if app.advanced {
                 t("hdr.advanced")
             } else {
                 t("hdr.simple")
             },
-        ),
-        (
-            Hit::LangToggle,
-            "󰗊",
-            t("side.lang"),
-            if i18n::lang() == i18n::Lang::Es {
+        },
+        SideToggle {
+            hit: Hit::LangToggle,
+            icon: "󰗊",
+            label: t("side.lang"),
+            value: if i18n::lang() == i18n::Lang::Es {
                 "Español".to_string()
             } else {
                 "English".to_string()
             },
-        ),
+        },
     ];
-    for (n, (hit, icon, label, value)) in toggles.into_iter().enumerate() {
-        let y = bottom - 2 + n as u16;
-        let hover = hovered(app, hit);
-        let lead = if hover { " ▸" } else { "  " };
-        let right = format!("{value} ⇄ ");
-        // Sin espacio suficiente solo se muestra el icono.
-        let left = if format!("{lead}{icon}  {label} {right}").width() <= w {
-            format!("{lead}{icon}  {label}")
-        } else {
-            format!("{lead}{icon}")
-        };
-        let style = if hover {
-            Style::new()
-                .fg(app.pal.bright)
-                .bg(app.pal.soft_hover)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            fg(app.pal.fg)
-        };
-        let val_style = if hover {
-            style
-        } else {
-            fg(app.pal.accent).add_modifier(Modifier::BOLD)
-        };
-        let gap = w.saturating_sub(left.width() + right.width());
-        put(
-            f,
-            area.x,
-            y,
-            vec![
-                Span::styled(format!("{left}{}", " ".repeat(gap)), style),
-                Span::styled(right, val_style),
-            ],
-        );
-        app.hits.push((Rect::new(area.x, y, area.width, 1), hit));
-    }
+    lizarbe_core::view::draw_sidebar(f, &mut ctx(app), area, &categories, &toggles, active);
 }
 
 // ---------------------------------------------------------------- pie
