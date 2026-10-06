@@ -2,10 +2,14 @@
 //! de las ventanas de Hyprland en Omarchy, sin editar archivos.
 
 mod app;
+mod apps;
+mod autostart;
+mod binds;
 mod catalog;
 mod hyprfile;
 mod i18n;
 mod paths;
+mod record;
 mod store;
 mod ui;
 

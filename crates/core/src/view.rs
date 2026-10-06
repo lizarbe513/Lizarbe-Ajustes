@@ -390,6 +390,7 @@ fn field_control<B>(fr: &FieldRow<B>) -> Ctl {
                 .unwrap_or_else(|| "—".into()),
             Some(Value::String(s)) if s.is_empty() => format!("({})", t("val.empty")),
             Some(Value::String(s)) => schema::escape_newlines(s),
+            Some(Value::Null) => "—".into(),
             Some(other) => other.to_string(),
         }),
     }

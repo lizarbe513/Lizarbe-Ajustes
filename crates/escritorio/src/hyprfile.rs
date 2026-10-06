@@ -25,6 +25,8 @@ pub struct RenderCtx {
     pub monitors: Vec<Monitor>,
     /// Escala general de `monitors.lua` (`"auto"` o un número).
     pub global_scale: Value,
+    /// Descripción y acción Lua de cada atajo, por teclas (para moverlos).
+    pub bind_actions: BTreeMap<String, (String, String)>,
 }
 
 impl Default for RenderCtx {
@@ -32,8 +34,73 @@ impl Default for RenderCtx {
         RenderCtx {
             monitors: vec![],
             global_scale: Value::String("auto".into()),
+            bind_actions: BTreeMap::new(),
         }
     }
+}
+
+/// Atajo añadido desde Escritorio.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomBind {
+    pub keys: String,
+    pub desc: String,
+    /// Acción en Lua para `o.bind` (`{ launch = "…" }`, `"orden"`…).
+    pub action: String,
+}
+
+impl CustomBind {
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({ "keys": self.keys, "desc": self.desc, "action": self.action })
+    }
+
+    pub fn from_json(v: &Value) -> Option<CustomBind> {
+        let s = |k: &str| v.get(k).and_then(Value::as_str).map(String::from);
+        Some(CustomBind {
+            keys: s("keys")?,
+            desc: s("desc").unwrap_or_default(),
+            action: s("action")?,
+        })
+    }
+}
+
+pub fn custom_binds(values: &Values) -> Vec<CustomBind> {
+    values
+        .get("x:custom_binds")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(CustomBind::from_json).collect())
+        .unwrap_or_default()
+}
+
+/// Atajos movidos, desactivados y añadidos.
+fn bind_lines(values: &Values, ctx: &RenderCtx) -> Vec<String> {
+    let mut unbinds = vec![];
+    let mut binds = vec![];
+    for (key, v) in values {
+        let Some(orig) = key.strip_prefix("x:bind:") else {
+            continue;
+        };
+        unbinds.push(format!(
+            "hl.unbind({})",
+            lua_value(&Value::String(orig.into()))
+        ));
+        if let (Some(new), Some((desc, action))) = (v.as_str(), ctx.bind_actions.get(orig)) {
+            binds.push(format!(
+                "o.bind({}, {}, {action})",
+                lua_value(&Value::String(new.into())),
+                lua_value(&Value::String(desc.clone())),
+            ));
+        }
+    }
+    for c in custom_binds(values) {
+        binds.push(format!(
+            "o.bind({}, {}, {})",
+            lua_value(&Value::String(c.keys)),
+            lua_value(&Value::String(c.desc)),
+            c.action
+        ));
+    }
+    unbinds.extend(binds);
+    unbinds
 }
 
 const META: &str = "-- LIZARBE_ESCRITORIO: ";
@@ -108,6 +175,14 @@ pub fn render(values: &Values, ctx: &RenderCtx) -> String {
             for var in ["XCURSOR_SIZE", "HYPRCURSOR_SIZE"] {
                 let _ = writeln!(out, "hl.env(\"{var}\", \"{sz}\")");
             }
+        }
+    }
+    let binds = bind_lines(values, ctx);
+    if !binds.is_empty() {
+        out.push_str("\n-- Atajos de teclado\n");
+        for b in binds {
+            out.push_str(&b);
+            out.push('\n');
         }
     }
     let rules = monitor_rules(values, ctx);
@@ -455,6 +530,7 @@ mod tests {
         let ctx = RenderCtx {
             monitors: vec![m],
             global_scale: json!(1.25),
+            ..Default::default()
         };
         let text = render(
             &vals(&[("x:mon:HDMI-A-1:position", json!("auto-left"))]),
@@ -487,6 +563,38 @@ mod tests {
             "con auto se mantiene la de GTK"
         );
         assert_eq!(with_monitor_scale("hl.monitor({})\n", &json!(1)), None);
+    }
+
+    #[test]
+    fn moves_disables_and_adds_binds() {
+        let mut ctx = RenderCtx::default();
+        ctx.bind_actions.insert(
+            "SUPER + RETURN".into(),
+            ("Terminal".into(), "{ omarchy = \"terminal\" }".into()),
+        );
+        let custom = CustomBind {
+            keys: "SUPER + ALT + W".into(),
+            desc: "WhatsApp".into(),
+            action: "{ webapp = \"https://web.whatsapp.com/\" }".into(),
+        };
+        let text = render(
+            &vals(&[
+                ("x:bind:SUPER + RETURN", json!("SUPER + T")),
+                ("x:bind:SUPER + SHIFT + Y", Value::Null),
+                ("x:custom_binds", json!([custom.to_json()])),
+            ]),
+            &ctx,
+        );
+        let i_unbind = text.find("hl.unbind(\"SUPER + RETURN\")").unwrap();
+        let i_bind = text
+            .find("o.bind(\"SUPER + T\", \"Terminal\", { omarchy = \"terminal\" })")
+            .unwrap();
+        assert!(i_unbind < i_bind, "primero se quitan, luego se asignan");
+        assert!(text.contains("hl.unbind(\"SUPER + SHIFT + Y\")"));
+        assert!(text.contains(
+            "o.bind(\"SUPER + ALT + W\", \"WhatsApp\", { webapp = \"https://web.whatsapp.com/\" })"
+        ));
+        assert!(!text.contains("hl.config"));
     }
 
     #[test]

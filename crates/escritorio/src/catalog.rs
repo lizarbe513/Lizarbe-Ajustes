@@ -20,17 +20,21 @@ pub enum Section {
     Keyboard,
     Mouse,
     Cursor,
+    Keybinds,
+    Autostart,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 7] = [
+    pub const ALL: [Section; 9] = [
         Section::Appearance,
         Section::Windows,
         Section::Monitors,
         Section::Keyboard,
         Section::Mouse,
         Section::Cursor,
+        Section::Keybinds,
+        Section::Autostart,
         Section::Changes,
     ];
 
@@ -47,6 +51,8 @@ impl Section {
             "teclado" | "keyboard" => Section::Keyboard,
             "mouse" | "raton" | "ratón" | "touchpad" => Section::Mouse,
             "cursor" => Section::Cursor,
+            "atajos" | "keybinds" | "shortcuts" | "bindings" => Section::Keybinds,
+            "inicio" | "autostart" => Section::Autostart,
             "cambios" | "changes" => Section::Changes,
             _ => return None,
         })
@@ -60,6 +66,8 @@ impl Section {
             Section::Keyboard => "keyboard",
             Section::Mouse => "mouse",
             Section::Cursor => "cursor",
+            Section::Keybinds => "keybinds",
+            Section::Autostart => "autostart",
             Section::Changes => "changes",
         }
     }
@@ -72,6 +80,8 @@ impl Section {
             Section::Keyboard => "󰌌",
             Section::Mouse => "󰍽",
             Section::Cursor => "󰇀",
+            Section::Keybinds => "󰘳",
+            Section::Autostart => "󰐥",
             Section::Changes => "󰄬",
         }
     }
@@ -87,7 +97,7 @@ impl Section {
 
 /// Categorías de la barra lateral: (clave de texto, secciones). El orden
 /// coincide con `Section::ALL`.
-pub const CATEGORIES: [(&str, &[Section]); 3] = [
+pub const CATEGORIES: [(&str, &[Section]); 4] = [
     ("cat.desktop", &[Section::Appearance, Section::Windows]),
     (
         "cat.devices",
@@ -98,6 +108,7 @@ pub const CATEGORIES: [(&str, &[Section]); 3] = [
             Section::Cursor,
         ],
     ),
+    ("cat.more", &[Section::Keybinds, Section::Autostart]),
     ("cat.review", &[Section::Changes]),
 ];
 
@@ -175,7 +186,8 @@ pub fn groups(section: Section, ctx: &Ctx) -> Vec<Group> {
         Section::Keyboard => keyboard(),
         Section::Mouse => mouse(),
         Section::Cursor => cursor(ctx),
-        Section::Changes => vec![],
+        // Listas propias: las construye la aplicación.
+        Section::Keybinds | Section::Autostart | Section::Changes => vec![],
     }
 }
 

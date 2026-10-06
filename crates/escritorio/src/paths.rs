@@ -3,6 +3,8 @@ use std::path::PathBuf;
 /// Ubicaciones que usa Escritorio.
 #[derive(Debug, Clone)]
 pub struct Paths {
+    /// Instalación de Omarchy ($OMARCHY_PATH); solo se lee.
+    pub omarchy_path: PathBuf,
     /// Configuración de Hyprland del usuario (~/.config/hypr).
     pub hypr_dir: PathBuf,
     /// Tema activo de Omarchy (para los colores de la interfaz).
@@ -26,7 +28,12 @@ impl Paths {
         } else {
             state_home.join("lizarbe/backups/escritorio")
         };
+        let omarchy_path = std::env::var_os("OMARCHY_PATH")
+            .map(PathBuf::from)
+            .filter(|p| p.is_dir())
+            .unwrap_or_else(|| PathBuf::from("/usr/share/omarchy"));
         Paths {
+            omarchy_path,
             hypr_dir,
             theme_dir: state_home.join("omarchy/current/theme"),
             backup_dir,
@@ -44,6 +51,14 @@ impl Paths {
 
     pub fn monitors_lua(&self) -> PathBuf {
         self.hypr_dir.join("monitors.lua")
+    }
+
+    pub fn bindings_lua(&self) -> PathBuf {
+        self.hypr_dir.join("bindings.lua")
+    }
+
+    pub fn autostart_lua(&self) -> PathBuf {
+        self.hypr_dir.join("autostart.lua")
     }
 
     pub fn theme_colors(&self) -> PathBuf {

@@ -19,8 +19,10 @@ use lizarbe_core::schema::FieldDef;
 use lizarbe_core::{hypr, ipc};
 use serde_json::{Value, json};
 
+use crate::autostart;
+use crate::binds;
 use crate::catalog::{self, Ctx, mode_value, monitor_key};
-use crate::hyprfile::{self, RenderCtx, Values};
+use crate::hyprfile::{self, CustomBind, RenderCtx, Values};
 use crate::paths::Paths;
 
 /// Un ajuste: opción de Hyprland o ajuste propio.
@@ -63,6 +65,12 @@ pub struct Store {
     mon_scale: Option<Value>,
     /// Tema y tamaño del cursor en uso.
     cursor: (String, i64),
+    /// Atajos en uso (con su acción, si se puede mover).
+    pub binds: Vec<binds::Entry>,
+    /// Programas de inicio con los cambios pendientes.
+    pub autostart: Vec<autostart::Entry>,
+    autostart_orig: Vec<autostart::Entry>,
+    autostart_raw: Option<String>,
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -119,6 +127,10 @@ impl Store {
             ctx: Ctx::default(),
             mon_scale: None,
             cursor: ("default".into(), 24),
+            binds: vec![],
+            autostart: vec![],
+            autostart_orig: vec![],
+            autostart_raw: None,
             paths,
         };
         s.reload();
@@ -147,11 +159,50 @@ impl Store {
                 .unwrap_or(24),
         );
         self.ctx.cursor_themes = catalog::cursor_themes();
+        self.autostart_raw = read(&self.paths.autostart_lua());
+        self.autostart_orig = self
+            .autostart_raw
+            .as_deref()
+            .map(autostart::parse)
+            .unwrap_or_default();
+        self.autostart = self.autostart_orig.clone();
         self.live = hypr::available();
+        self.binds.clear();
         self.effective.clear();
         self.ctx.monitors.clear();
         if self.live {
             self.ctx.monitors = hypr::monitors(false).unwrap_or_default();
+            let sources = binds::sources(&self.paths.omarchy_path, &self.paths.bindings_lua());
+            self.binds = binds::entries(&binds::live(), &sources);
+            // Los atajos que Escritorio ya movió o quitó no salen en la lista
+            // en uso: se recuperan de los archivos para poder mostrarlos.
+            for key in self.orig.keys().filter_map(|k| k.strip_prefix("x:bind:")) {
+                if !self.binds.iter().any(|b| b.keys == key)
+                    && let Some(src) = sources.iter().find(|s| s.keys == key)
+                {
+                    self.binds.push(binds::Entry {
+                        keys: src.keys.clone(),
+                        desc: src.desc.clone(),
+                        origin: src.origin.clone(),
+                        action: src.action.clone(),
+                    });
+                }
+            }
+            // Y los que Escritorio puso en su lugar no se repiten.
+            let placed: Vec<String> = self
+                .orig
+                .iter()
+                .filter(|(k, _)| k.starts_with("x:bind:"))
+                .filter_map(|(_, v)| v.as_str().map(String::from))
+                .chain(
+                    hyprfile::custom_binds(&self.orig)
+                        .into_iter()
+                        .map(|c| c.keys),
+                )
+                .collect();
+            self.binds.retain(|b| {
+                !placed.contains(&b.keys) || self.orig.contains_key(&format!("x:bind:{}", b.keys))
+            });
             let keys = catalog::hypr_keys();
             let names: Vec<&str> = keys.iter().map(String::as_str).collect();
             let plain = Ctx::default();
@@ -214,11 +265,49 @@ impl Store {
     }
 
     pub fn dirty(&self) -> bool {
-        self.values != self.orig
+        self.values != self.orig || self.autostart != self.autostart_orig
     }
 
     pub fn discard(&mut self) {
         self.values = self.orig.clone();
+        self.autostart = self.autostart_orig.clone();
+    }
+
+    /// Deshace los cambios pendientes del inicio automático.
+    pub fn discard_autostart(&mut self) {
+        self.autostart = self.autostart_orig.clone();
+    }
+
+    pub fn custom_binds(&self) -> Vec<CustomBind> {
+        hyprfile::custom_binds(&self.values)
+    }
+
+    pub fn set_custom_binds(&mut self, list: &[CustomBind]) {
+        if list.is_empty() {
+            self.values.remove("x:custom_binds");
+        } else {
+            self.values.insert(
+                "x:custom_binds".into(),
+                Value::Array(list.iter().map(CustomBind::to_json).collect()),
+            );
+        }
+    }
+
+    /// Teclas que quedarán en uso con los cambios pendientes, con la
+    /// descripción del atajo que las usa.
+    pub fn keys_in_use(&self) -> Vec<(String, String)> {
+        let mut out = vec![];
+        for b in &self.binds {
+            match self.values.get(&format!("x:bind:{}", b.keys)) {
+                None => out.push((b.keys.clone(), b.desc.clone())),
+                Some(Value::String(new)) => out.push((new.clone(), b.desc.clone())),
+                Some(_) => {}
+            }
+        }
+        for c in self.custom_binds() {
+            out.push((c.keys, c.desc));
+        }
+        out
     }
 
     /// Quita los ajustes `keys` (vuelven al valor de Omarchy).
@@ -237,14 +326,35 @@ impl Store {
         let mut keys: Vec<&String> = self.orig.keys().chain(self.values.keys()).collect();
         keys.sort();
         keys.dedup();
-        keys.into_iter()
+        let mut out: Vec<Change> = keys
+            .into_iter()
             .filter(|k| self.orig.get(*k) != self.values.get(*k))
             .map(|k| Change {
                 key: k.clone(),
                 old: self.orig.get(k).cloned(),
                 new: self.values.get(k).cloned(),
             })
-            .collect()
+            .collect();
+        // Inicio automático: un cambio por programa (activado, desactivado,
+        // añadido o quitado).
+        for o in &self.autostart_orig {
+            let now = self.autostart.iter().find(|e| e.line == o.line);
+            if now.map(|e| e.enabled) != Some(o.enabled) {
+                out.push(Change {
+                    key: format!("as:{}", o.cmd),
+                    old: Some(Value::Bool(o.enabled)),
+                    new: now.map(|e| Value::Bool(e.enabled)),
+                });
+            }
+        }
+        for e in self.autostart.iter().filter(|e| e.line.is_none()) {
+            out.push(Change {
+                key: format!("as:{}", e.cmd),
+                old: None,
+                new: Some(Value::Bool(e.enabled)),
+            });
+        }
+        out
     }
 
     /// `escritorio.lua` cambió en disco desde que se cargó.
@@ -254,7 +364,17 @@ impl Store {
 
     pub fn apply(&mut self) -> Result<ApplyReport> {
         let mut report = ApplyReport::default();
+        let bind_actions = self
+            .binds
+            .iter()
+            .filter_map(|b| {
+                b.action
+                    .clone()
+                    .map(|a| (b.keys.clone(), (b.desc.clone(), a)))
+            })
+            .collect();
         let ctx = RenderCtx {
+            bind_actions,
             monitors: self.ctx.monitors.clone(),
             global_scale: self
                 .values
@@ -287,6 +407,11 @@ impl Store {
         let main = self.paths.hyprland_lua();
         if let Some(text) = read(&main).and_then(|t| hyprfile::with_require(&t)) {
             tx.write(&main, &text)?;
+        }
+        if self.autostart != self.autostart_orig {
+            let text =
+                autostart::render(self.autostart_raw.as_deref().unwrap_or(""), &self.autostart);
+            tx.write(&self.paths.autostart_lua(), &text)?;
         }
         if let Some(scale) = self.values.get("m:scale") {
             let monitors = self.paths.monitors_lua();
@@ -323,8 +448,16 @@ fn apply_cursor(theme: &str, size: i64) {
     let _ = ipc::run("gsettings", &["set", gs, "cursor-size", &size]);
 }
 
+/// Índice de un programa de inicio en una clave `as:<i>`.
+fn autostart_index(key: &str) -> Option<usize> {
+    key.strip_prefix("as:")?.parse().ok()
+}
+
 impl FieldStore<Bind> for Store {
     fn get(&self, bind: &Bind) -> Option<Value> {
+        if let Some(i) = autostart_index(&bind.0) {
+            return self.autostart.get(i).map(|e| Value::Bool(e.enabled));
+        }
         if let Some(prefix) = kb_prefix(&bind.0) {
             return self
                 .values
@@ -336,6 +469,14 @@ impl FieldStore<Bind> for Store {
     }
 
     fn get_original(&self, bind: &Bind) -> Option<Value> {
+        if let Some(i) = autostart_index(&bind.0) {
+            let e = self.autostart.get(i)?;
+            return self
+                .autostart_orig
+                .iter()
+                .find(|o| o.line.is_some() && o.line == e.line)
+                .map(|o| Value::Bool(o.enabled));
+        }
         if let Some(prefix) = kb_prefix(&bind.0) {
             return self
                 .orig
@@ -349,6 +490,12 @@ impl FieldStore<Bind> for Store {
     /// Igualar el valor de Omarchy equivale a no fijarlo: así el archivo
     /// solo guarda lo que de verdad cambia.
     fn set_field(&mut self, bind: &Bind, value: Value, default: Option<&Value>) {
+        if let Some(i) = autostart_index(&bind.0) {
+            if let Some(e) = self.autostart.get_mut(i) {
+                e.enabled = value.as_bool().unwrap_or(e.enabled);
+            }
+            return;
+        }
         if let Some(prefix) = kb_prefix(&bind.0) {
             let base = self.kb_base();
             let current = self
@@ -373,6 +520,13 @@ impl FieldStore<Bind> for Store {
     }
 
     fn unset(&mut self, bind: &Bind) {
+        if let Some(i) = autostart_index(&bind.0) {
+            let orig = self.get_original(bind).and_then(|v| v.as_bool());
+            if let (Some(e), Some(on)) = (self.autostart.get_mut(i), orig) {
+                e.enabled = on;
+            }
+            return;
+        }
         if let Some(prefix) = kb_prefix(&bind.0) {
             let token = kb_token(&self.kb_base(), prefix);
             return self.set_field(bind, json!(token), None);
@@ -534,6 +688,45 @@ mod tests {
         let esc = std::fs::read_to_string(d.path().join("escritorio.lua")).unwrap();
         assert!(!esc.contains("m:scale"));
         assert!(!s.dirty(), "tras aplicar, la escala sale de monitors.lua");
+    }
+
+    #[test]
+    fn autostart_changes_are_written() {
+        let (d, mut s) = sandbox();
+        std::fs::write(
+            d.path().join("autostart.lua"),
+            "-- inicio\n-- o.launch_on_start(\"hyprsunset\")\n",
+        )
+        .unwrap();
+        s.reload();
+        assert_eq!(s.autostart.len(), 1);
+        s.set_field(&Bind("as:0".into()), json!(true), None);
+        s.autostart
+            .push(crate::autostart::Entry::new("blueman-applet", false));
+        assert!(s.dirty());
+        assert_eq!(s.changes().len(), 2);
+        s.apply().unwrap();
+        let text = std::fs::read_to_string(d.path().join("autostart.lua")).unwrap();
+        assert_eq!(
+            text,
+            "-- inicio\no.launch_on_start(\"hyprsunset\")\no.launch_on_start(\"blueman-applet\")\n"
+        );
+        assert!(!s.dirty());
+    }
+
+    #[test]
+    fn custom_binds_roundtrip() {
+        let (_d, mut s) = sandbox();
+        let c = CustomBind {
+            keys: "SUPER + ALT + W".into(),
+            desc: "WhatsApp".into(),
+            action: "{ webapp = \"https://web.whatsapp.com/\" }".into(),
+        };
+        s.set_custom_binds(std::slice::from_ref(&c));
+        assert_eq!(s.custom_binds(), vec![c]);
+        assert!(s.keys_in_use().iter().any(|(k, _)| k == "SUPER + ALT + W"));
+        s.set_custom_binds(&[]);
+        assert!(!s.dirty());
     }
 
     #[test]

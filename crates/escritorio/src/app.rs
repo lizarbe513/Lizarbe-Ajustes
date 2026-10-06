@@ -2,6 +2,9 @@
 //! convenciones que Widgets: barra lateral, formularios, botones Restaurar ·
 //! Cancelar · Aplicar, menú contextual y ayuda.
 
+mod lists;
+
+use std::cell::OnceCell;
 use std::time::{Duration, Instant};
 
 use lizarbe_core::field::{self, Activation};
@@ -20,9 +23,11 @@ use ratatui::crossterm::event::{
 use ratatui::layout::{Position, Rect};
 use serde_json::Value;
 
+use crate::apps::App as DesktopApp;
 pub use crate::catalog::Section;
 use crate::catalog::{self, groups};
 use crate::i18n::{self, t, tf};
+use crate::record::Recorder;
 use crate::store::{Bind, Store};
 use lizarbe_core::schema::FieldDef;
 
@@ -105,9 +110,25 @@ impl CoreHit for Hit {
     }
 }
 
-/// Acciones de filas tipo botón (aún no hay ninguna).
+/// Acciones de filas tipo botón.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Act {}
+pub enum Act {
+    AddBind,
+    SearchBinds,
+    ClearSearch,
+    AddAutostart,
+}
+
+/// Qué recibe la combinación que se está grabando.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecTarget {
+    /// Un atajo existente (por sus teclas originales).
+    Move(String),
+    /// Un atajo añadido desde Escritorio (por su posición).
+    Custom(usize),
+    /// Uno nuevo: después se elige qué hace.
+    NewCustom,
+}
 
 pub type Row = lizarbe_core::form::Row<Bind, Act>;
 pub type FieldRow = lizarbe_core::form::FieldRow<Bind>;
@@ -119,16 +140,40 @@ pub enum Confirm {
     Discard,
     Quit,
     Restore(Vec<String>),
+    /// Asignar teclas que ya usa otro atajo (que se desactivará).
+    BindAssign {
+        target: RecTarget,
+        keys: String,
+    },
+    RestoreAutostart,
 }
 
-/// Escritorio no tiene cuadros de texto ni selectores propios.
+/// Cuadros de texto propios de Escritorio.
 #[derive(Debug, Clone, PartialEq)]
-pub enum Never {}
+pub enum EInput {
+    BindFilter,
+    BindCommand(String),
+    BindWeb(String),
+    AutostartCmd,
+}
+
+/// Selectores propios de Escritorio.
+#[derive(Debug, Clone, PartialEq)]
+pub enum EPick {
+    /// Qué hace un atajo nuevo (con sus teclas ya grabadas).
+    BindKind(String),
+    BindApp(String),
+    AutostartApp,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuAct {
     Activate(usize),
     ResetField(usize),
+    BindRecord(usize),
+    BindDisable(usize),
+    CustomRemove(usize),
+    AutostartRemove(usize),
     Apply,
     Cancel,
     Restore,
@@ -141,8 +186,8 @@ pub struct E;
 impl PopupTypes for E {
     type Bind = Bind;
     type Confirm = Confirm;
-    type Input = Never;
-    type Pick = Never;
+    type Input = EInput;
+    type Pick = EPick;
     type Menu = MenuAct;
 }
 
@@ -172,6 +217,12 @@ pub struct App {
     /// Elemento bajo el ratón.
     pub hover: Option<Hit>,
     pub quit: bool,
+    /// Filtro de la lista de atajos.
+    pub bind_filter: String,
+    /// Grabación de una combinación en curso.
+    recording: Option<(Recorder, RecTarget)>,
+    /// Aplicaciones instaladas (se leen la primera vez que hacen falta).
+    apps: OnceCell<Vec<DesktopApp>>,
     last_check: Instant,
     last_click: Option<(Instant, Hit)>,
 }
@@ -192,6 +243,9 @@ impl App {
             hits: vec![],
             hover: None,
             quit: false,
+            bind_filter: String::new(),
+            recording: None,
+            apps: OnceCell::new(),
             last_check: Instant::now(),
             last_click: None,
         }
@@ -217,6 +271,7 @@ impl App {
 
     /// Avisos que caducan y recarga si `escritorio.lua` cambió por fuera.
     pub fn tick(&mut self) {
+        self.poll_record();
         if self
             .toast
             .as_ref()
@@ -243,6 +298,8 @@ impl App {
     pub fn rows(&self) -> Vec<Row> {
         match self.section {
             Section::Changes => self.changes_rows(),
+            Section::Keybinds => self.keybind_rows(),
+            Section::Autostart => self.autostart_rows(),
             s => self.settings_rows(s),
         }
     }
@@ -304,6 +361,13 @@ impl App {
             rows.push(Row::Note(t("ch.none"), NoteKind::Info));
         } else {
             for c in changes {
+                if let Some((name, old, new)) = self.describe_list_change(&c) {
+                    rows.push(Row::Note(
+                        tf("ch.key", &[("key", &name), ("old", &old), ("new", &new)]),
+                        NoteKind::Info,
+                    ));
+                    continue;
+                }
                 let def = self.def_of(&c.key);
                 let base = def.as_ref().and_then(|d| self.store.base(d));
                 let show = |v: Option<Value>| match (v.or_else(|| base.clone()), &def) {
@@ -368,6 +432,10 @@ impl App {
     pub fn on_key(&mut self, key: KeyEvent) {
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return self.request_quit();
+        }
+        // Mientras se graba, las teclas son para Hyprland.
+        if self.recording.is_some() {
+            return;
         }
         if let Some(mut popup) = self.popup.take() {
             let outcome = popup.on_key(key);
@@ -508,9 +576,26 @@ impl App {
                     self.focus = Focus::Sidebar;
                 }
             }
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                if let Some(Row::Field(f)) = rows.get(sel).cloned() {
-                    self.activate_field(f);
+            KeyCode::Enter | KeyCode::Char(' ') => match rows.get(sel).cloned() {
+                Some(Row::Field(f)) => self.activate_field(f),
+                Some(Row::Action(_, act)) => self.run_act(act),
+                _ => {}
+            },
+            KeyCode::Char('/') if self.section == Section::Keybinds => {
+                self.run_act(Act::SearchBinds)
+            }
+            KeyCode::Char('n') if self.section == Section::Keybinds => self.run_act(Act::AddBind),
+            KeyCode::Char('n') if self.section == Section::Autostart => {
+                self.run_act(Act::AddAutostart)
+            }
+            KeyCode::Char('d') | KeyCode::Delete
+                if self.section == Section::Autostart
+                    && matches!(rows.get(sel), Some(Row::Field(_))) =>
+            {
+                if let Some(Row::Field(f)) = rows.get(sel)
+                    && let Some(n) = f.bind.0.strip_prefix("as:").and_then(|n| n.parse().ok())
+                {
+                    self.remove_autostart(n);
                 }
             }
             KeyCode::Char('r') | KeyCode::Delete | KeyCode::Backspace => {
@@ -524,6 +609,14 @@ impl App {
 
     fn activate_field(&mut self, f: FieldRow) {
         let sel = self.form_state().sel;
+        // Los atajos abren su menú (cambiar teclas, desactivar…).
+        if Self::is_list_row(&f.bind.0) {
+            let at = self
+                .hit_rect(Hit::Ctrl(sel, Sub::Main))
+                .map(|r| (r.x, r.y + 2))
+                .unwrap_or((10, 5));
+            return self.open_menu(Some(Hit::Ctrl(sel, Sub::Main)), at);
+        }
         let anchor = self.hit_rect(Hit::Ctrl(sel, Sub::Main));
         match field::activate(&f, anchor, None) {
             Activation::Set(v) => self.store.set_field(&f.bind, v, f.def.default.as_ref()),
@@ -537,6 +630,16 @@ impl App {
     pub fn restore_scope(&self) -> (Vec<String>, &'static str) {
         match self.section {
             Section::Changes => (self.store.values.keys().cloned().collect(), "restore.all"),
+            Section::Keybinds => (
+                self.store
+                    .values
+                    .keys()
+                    .filter(|k| k.starts_with("x:bind:") || *k == "x:custom_binds")
+                    .cloned()
+                    .collect(),
+                "restore.binds",
+            ),
+            Section::Autostart => (vec![], "restore.autostart"),
             s => {
                 let mut keys: Vec<String> = groups(s, &self.store.ctx)
                     .into_iter()
@@ -560,10 +663,15 @@ impl App {
 
     fn request_restore(&mut self) {
         let (keys, k) = self.restore_scope();
+        let action = if self.section == Section::Autostart {
+            Confirm::RestoreAutostart
+        } else {
+            Confirm::Restore(keys)
+        };
         self.popup = Some(Popup::Confirm {
             title: t(k),
             lines: vec![t(&format!("{k}.desc")), String::new(), t("restore.note")],
-            action: Confirm::Restore(keys),
+            action,
         });
     }
 
@@ -644,6 +752,11 @@ impl App {
                         self.toast(t("msg.discarded"), NoteKind::Info);
                     }
                     Confirm::Quit => self.quit = true,
+                    Confirm::BindAssign { target, keys } => self.assign(target, keys),
+                    Confirm::RestoreAutostart => {
+                        self.store.discard_autostart();
+                        self.toast(t("msg.restored"), NoteKind::Info);
+                    }
                     Confirm::Restore(keys) => {
                         let before = self.store.values.clone();
                         self.store.restore(&keys);
@@ -676,7 +789,7 @@ impl App {
                             self.store.set_field(&bind, value, def.default.as_ref());
                         }
                     }
-                    PickTarget::App(never) => match never {},
+                    PickTarget::App(pick) => self.on_pick(pick, value),
                 }
             }
             Outcome::Submitted(target, text) => match target {
@@ -697,7 +810,18 @@ impl App {
                         }
                     }
                 }
-                cp::InputTarget::App(never) => match never {},
+                cp::InputTarget::App(input) => match self.on_input(input, text) {
+                    Ok(()) => {
+                        if matches!(self.popup, Some(Popup::Input(_))) {
+                            self.popup = None;
+                        }
+                    }
+                    Err(msg) => {
+                        if let Some(Popup::Input(inp)) = &mut self.popup {
+                            inp.error = Some(msg);
+                        }
+                    }
+                },
             },
             Outcome::Checked(bind, values) => {
                 self.popup = None;
@@ -808,10 +932,12 @@ impl App {
                 }
                 let again = self.form_state().sel == i;
                 self.form_state().sel = i;
-                if (again || double)
-                    && let Some(Row::Field(f)) = rows.get(i).cloned()
-                {
-                    self.activate_field(f);
+                if again || double {
+                    match rows.get(i).cloned() {
+                        Some(Row::Field(f)) => self.activate_field(f),
+                        Some(Row::Action(_, act)) => self.run_act(act),
+                        _ => {}
+                    }
                 }
             }
             Some(Hit::Ctrl(i, sub)) => {
@@ -824,6 +950,7 @@ impl App {
                     }
                     (Sub::Slider, _) => self.slide(i, x),
                     (_, Some(Row::Field(f))) => self.activate_field(f),
+                    (_, Some(Row::Action(_, act))) => self.run_act(act),
                     _ => {}
                 }
             }
@@ -893,7 +1020,12 @@ impl App {
             Some(Hit::Row(i)) | Some(Hit::Ctrl(i, _)) => {
                 self.focus = Focus::Content;
                 self.form_state().sel = i;
-                if let Some(Row::Field(f)) = self.rows().get(i) {
+                let rows = self.rows();
+                if let Some(Row::Field(f)) = rows.get(i)
+                    && (Self::is_list_row(&f.bind.0) || f.bind.0.starts_with("as:"))
+                {
+                    items.extend(self.list_menu_items(i, f));
+                } else if let Some(Row::Field(f)) = rows.get(i) {
                     let label = match f.def.kind {
                         Kind::Bool => t("menu.toggle"),
                         Kind::Enum(_) | Kind::Multi(_) => t("menu.choose"),
@@ -948,6 +1080,30 @@ impl App {
                     self.store.unset(&f.bind);
                 }
             }
+            MenuAct::BindRecord(i) => {
+                let target = match self.rows().get(i) {
+                    Some(Row::Field(f)) => {
+                        let key = f.bind.0.clone();
+                        match key.strip_prefix("x:custom:") {
+                            Some(n) => n.parse().ok().map(RecTarget::Custom),
+                            None => key
+                                .strip_prefix("x:bind:")
+                                .map(|o| RecTarget::Move(o.to_string())),
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(target) = target {
+                    self.start_record(target);
+                }
+            }
+            MenuAct::BindDisable(i) => {
+                if let Some(Row::Field(f)) = self.rows().get(i) {
+                    self.store.values.insert(f.bind.0.clone(), Value::Null);
+                }
+            }
+            MenuAct::CustomRemove(n) => self.remove_custom(n),
+            MenuAct::AutostartRemove(n) => self.remove_autostart(n),
             MenuAct::Apply => self.request_apply(),
             MenuAct::Cancel => self.request_discard(),
             MenuAct::Restore => self.request_restore(),
@@ -972,6 +1128,10 @@ impl App {
             Hit::ModeToggle => t("hint.mode"),
             Hit::LangToggle => t("hint.lang"),
             Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
+                Row::Field(f) if Self::is_list_row(&f.bind.0) => {
+                    format!("{} — {}", f.def.label, t("hint.bind"))
+                }
+                Row::Action(label, _) => format!("{label} — {}", t("hint.click_run")),
                 Row::Field(f) => {
                     let what = match f.def.kind {
                         Kind::Bool => t("hint.click_toggle"),
