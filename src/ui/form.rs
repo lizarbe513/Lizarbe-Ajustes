@@ -190,11 +190,6 @@ pub fn display_value(f: &FieldRow) -> String {
     }
 }
 
-/// `true` si el valor mostrado es el predeterminado (la clave no existe).
-pub fn is_default(f: &FieldRow) -> bool {
-    f.value.is_none()
-}
-
 /// Cambia el valor con ←/→: alterna, recorre opciones o suma el paso.
 pub fn nudge(store: &mut Store, f: &FieldRow, forward: bool) {
     let def = &f.def;

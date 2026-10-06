@@ -21,7 +21,8 @@ use crate::prefs::Prefs;
 use crate::store::{Bind, Scope, Store};
 use crate::ui::form::{self, Act, FieldRow, FormState, NoteKind, Row};
 use crate::ui::popup::{
-    Checklist, Confirm, Input, InputTarget, Outcome, PickItem, PickTarget, Picker, Popup, fold,
+    Checklist, Confirm, Input, InputTarget, Menu, MenuAct, MenuItem, Outcome, PickItem, PickTarget,
+    Picker, Popup, fold,
 };
 
 /// Marcadores de opciones especiales en los selectores.
@@ -64,6 +65,17 @@ impl Section {
         }
     }
 
+    pub fn description(self) -> String {
+        t(match self {
+            Section::Bar => "sec.bar.desc",
+            Section::Widgets => "sec.widgets.desc",
+            Section::Plugins => "sec.plugins.desc",
+            Section::Idle => "sec.idle.desc",
+            Section::Appearance => "sec.appearance.desc",
+            Section::Changes => "sec.changes.desc",
+        })
+    }
+
     pub fn title(self) -> String {
         t(match self {
             Section::Bar => "sec.bar",
@@ -93,13 +105,14 @@ pub enum Button {
 }
 
 impl Button {
-    pub const ALL: [Button; 3] = [Button::Apply, Button::Cancel, Button::Restore];
+    /// En el orden en que se dibujan (como en Meca: el principal a la derecha).
+    pub const ALL: [Button; 3] = [Button::Restore, Button::Cancel, Button::Apply];
 
     pub fn label(self) -> String {
         match self {
-            Button::Apply => format!("󰄬  {}  a", t("btn.apply")),
-            Button::Cancel => format!("󰜺  {}  c", t("btn.cancel")),
-            Button::Restore => format!("󰑓  {}  R", t("btn.restore")),
+            Button::Apply => format!(" 󰄬 {} ", t("btn.apply")),
+            Button::Cancel => format!(" 󰜺 {} ", t("btn.cancel")),
+            Button::Restore => format!(" 󰑓 {} ", t("btn.restore")),
         }
     }
 }
@@ -107,12 +120,36 @@ impl Button {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
     Sidebar(usize),
+    /// Interruptores del pie del sidebar.
+    ModeToggle,
+    LangToggle,
+    /// Fila de un formulario (zona del nombre).
     Row(usize),
+    /// Control de la fila `usize` (caja, botones − / +, deslizador).
+    Ctrl(usize, Sub),
     Widget(usize, usize),
     Column(usize),
+    /// Fila "＋ Añadir" al final de una columna de widgets.
+    AddWidget(usize),
+    /// Campo de búsqueda de la lista de plugins.
+    Search,
     Plugin(usize),
+    /// Interruptor ON/off de la fila de un plugin.
+    PluginSwitch(usize),
     PopupItem(usize),
+    /// Botones de una ventana emergente.
+    ModalButton(usize),
+    MenuItem(usize),
     Button(usize),
+}
+
+/// Parte de un control sobre la que está el ratón.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sub {
+    Main,
+    Minus,
+    Plus,
+    Slider,
 }
 
 #[derive(Debug, Default)]
@@ -169,6 +206,9 @@ pub struct App {
     pub popup: Option<Popup>,
     pub toast: Option<Toast>,
     pub hits: Vec<(Rect, Hit)>,
+    /// Elemento bajo el cursor del ratón (para el resaltado "hover").
+    pub hover: Option<Hit>,
+    pub mouse: Option<(u16, u16)>,
     pub quit: bool,
     pub exec: Option<ExecRequest>,
     pub shell_running: bool,
@@ -194,6 +234,8 @@ impl App {
             popup: None,
             toast: None,
             hits: vec![],
+            hover: None,
+            mouse: None,
             quit: false,
             exec: None,
             shell_running,
@@ -322,17 +364,9 @@ impl App {
         };
         let id = sj::entry_id(&entry);
         let plugin = self.store.catalog.get(&id);
-        let mut rows = vec![Row::Header(curated::widget_name(
-            &id,
-            Some(&entry),
-            &self.store.catalog,
-        ))];
-        if let Some(p) = plugin {
-            let d = curated::widget_description(p);
-            if !d.is_empty() {
-                rows.push(Row::Note(d, NoteKind::Info));
-            }
-        } else if entry.get("type").is_none() {
+        // El nombre y la descripción ya aparecen en el encabezado de la sección.
+        let mut rows = vec![Row::Header(t("w.settings"))];
+        if plugin.is_none() && entry.get("type").is_none() {
             rows.push(Row::Note(t("w.unknown"), NoteKind::Warn));
         }
         let fields = curated::widget_fields(&id, &entry, plugin);
@@ -608,6 +642,7 @@ impl App {
             KeyCode::Char('a') => return self.request_apply(),
             KeyCode::Char('c') => return self.request_discard(),
             KeyCode::Char('R') => return self.request_restore(),
+            KeyCode::Char('o') => return self.open_menu_for_selection(),
             KeyCode::Char('m') => {
                 self.advanced = !self.advanced;
                 self.prefs.advanced = self.advanced;
@@ -632,7 +667,11 @@ impl App {
             KeyCode::Tab => {
                 self.focus = match self.focus {
                     Focus::Sidebar => Focus::Content,
-                    Focus::Content => Focus::Buttons,
+                    Focus::Content => {
+                        // Al llegar a los botones se propone "Aplicar" si hay cambios.
+                        self.button = if self.store.dirty() { 2 } else { 0 };
+                        Focus::Buttons
+                    }
                     Focus::Buttons => Focus::Sidebar,
                 };
                 return;
@@ -674,8 +713,20 @@ impl App {
     fn buttons_key(&mut self, key: KeyEvent) {
         let n = Button::ALL.len();
         match key.code {
-            KeyCode::Left | KeyCode::Char('h') => self.button = (self.button + n - 1) % n,
-            KeyCode::Right | KeyCode::Char('l') => self.button = (self.button + 1) % n,
+            KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') => {
+                let step = if matches!(key.code, KeyCode::Left | KeyCode::Char('h')) {
+                    n - 1
+                } else {
+                    1
+                };
+                // Salta los botones desactivados (Aplicar/Cancelar sin cambios).
+                for _ in 0..n {
+                    self.button = (self.button + step) % n;
+                    if self.button_enabled(Button::ALL[self.button]) {
+                        break;
+                    }
+                }
+            }
             KeyCode::Enter | KeyCode::Char(' ') => self.press(Button::ALL[self.button]),
             KeyCode::Up | KeyCode::Char('k') | KeyCode::Esc => self.focus = Focus::Content,
             _ => {}
@@ -789,6 +840,7 @@ impl App {
             Kind::Bool => form::nudge(&mut self.store, &f, true),
             Kind::Enum(opts) => {
                 self.popup = Some(Popup::Picker(Picker {
+                    anchor: self.ctrl_anchor(),
                     title: def.label.clone(),
                     items: opts.iter().map(PickItem::from_opt).collect(),
                     sel: opts
@@ -828,6 +880,7 @@ impl App {
                 });
                 let cur = f.effective().cloned();
                 self.popup = Some(Popup::Picker(Picker {
+                    anchor: self.ctrl_anchor(),
                     title: def.label.clone(),
                     sel: def
                         .presets
@@ -845,6 +898,12 @@ impl App {
             }
             _ => self.open_field_input(&f),
         }
+    }
+
+    /// Rectángulo del control de la fila seleccionada (para anclar desplegables).
+    fn ctrl_anchor(&mut self) -> Option<Rect> {
+        let sel = self.form_state().sel;
+        self.hit_rect(Hit::Ctrl(sel, Sub::Main))
     }
 
     fn open_field_input(&mut self, f: &FieldRow) {
@@ -1070,6 +1129,7 @@ impl App {
         }
         let sel = items.iter().position(|i| i.enabled).unwrap_or(0);
         self.popup = Some(Popup::Picker(Picker {
+            anchor: None,
             title: tf(
                 "add.title",
                 &[("section", &t(&format!("col.{}", sj::SECTIONS[col])))],
@@ -1402,6 +1462,10 @@ impl App {
                 self.on_picked(target, value);
             }
             Outcome::Submitted(target, text) => self.on_submitted(target, text),
+            Outcome::MenuPick(act) => {
+                self.popup = None;
+                self.run_menu(act);
+            }
             Outcome::Checked(bind, values) => {
                 self.popup = None;
                 if values.is_empty() {
@@ -1533,27 +1597,53 @@ impl App {
             .map(|(_, h)| *h)
     }
 
+    fn hit_rect(&self, hit: Hit) -> Option<Rect> {
+        self.hits
+            .iter()
+            .rev()
+            .find(|(_, h)| *h == hit)
+            .map(|(r, _)| *r)
+    }
+
     pub fn on_mouse(&mut self, m: MouseEvent) {
         let hit = self.hit_at(m.column, m.row);
+        self.mouse = Some((m.column, m.row));
         match m.kind {
+            MouseEventKind::Moved => self.hover = hit,
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
                 let code = if m.kind == MouseEventKind::ScrollUp {
                     KeyCode::Up
                 } else {
                     KeyCode::Down
                 };
-                self.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+                match (self.popup.is_some(), hit) {
+                    // La rueda sobre el sidebar cambia de sección.
+                    (false, Some(Hit::Sidebar(_))) => {
+                        self.focus = Focus::Sidebar;
+                        self.sidebar_key(KeyEvent::new(code, KeyModifiers::NONE));
+                    }
+                    _ => self.on_key(KeyEvent::new(code, KeyModifiers::NONE)),
+                }
             }
             MouseEventKind::Down(MouseButton::Left) => {
                 let double = self.last_click.is_some_and(|(at, h)| {
                     Some(h) == hit && at.elapsed() < Duration::from_millis(400)
                 });
                 self.last_click = hit.map(|h| (Instant::now(), h));
-                self.click(hit, double);
+                self.click(hit, double, m.column);
+            }
+            MouseEventKind::Down(MouseButton::Right) => {
+                if self.popup.is_none() || matches!(self.popup, Some(Popup::Menu(_))) {
+                    self.open_menu(hit, (m.column, m.row));
+                }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
+                self.hover = hit;
                 if self.widgets.drag.is_some() {
                     self.widgets.drag_over = hit;
+                } else if let Some(Hit::Ctrl(i, Sub::Slider)) = hit {
+                    // Arrastrar sobre un deslizador cambia el valor en vivo.
+                    self.slide(i, m.column);
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
@@ -1577,28 +1667,40 @@ impl App {
         }
     }
 
-    fn click(&mut self, hit: Option<Hit>, double: bool) {
-        if self.popup.is_some() {
-            if let Some(Hit::PopupItem(i)) = hit {
-                let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
-                match self.popup.as_mut() {
-                    Some(Popup::Picker(p)) => {
-                        let again = p.sel == i;
-                        p.sel = i;
-                        if again || double {
-                            self.on_key(enter);
-                        }
-                    }
-                    Some(Popup::Checklist(c)) => {
-                        c.sel = i;
-                        if let Some(x) = c.checked.get_mut(i) {
-                            *x = !*x;
-                        }
-                    }
-                    _ => {}
-                }
-            }
+    /// Fija el valor de un deslizador según la columna del ratón.
+    fn slide(&mut self, row: usize, x: u16) {
+        let Some(r) = self.hit_rect(Hit::Ctrl(row, Sub::Slider)) else {
             return;
+        };
+        let rows = self.rows();
+        let Some(Row::Field(f)) = rows.get(row) else {
+            return;
+        };
+        if let Kind::Float {
+            min: Some(min),
+            max: Some(max),
+            step,
+        } = f.def.kind
+        {
+            let track = r.width.saturating_sub(1).max(1) as f64;
+            let frac = (x.saturating_sub(r.x) as f64 / track).clamp(0.0, 1.0);
+            let raw = min + frac * (max - min);
+            let v = if step > 0.0 {
+                (raw / step).round() * step
+            } else {
+                raw
+            };
+            let v = schema::clamp_float(&f.def.kind, v);
+            if let Some(n) = serde_json::Number::from_f64(v) {
+                self.store
+                    .set_field(&f.bind, Value::Number(n), f.def.default.as_ref());
+            }
+        }
+    }
+
+    fn click(&mut self, hit: Option<Hit>, double: bool, x: u16) {
+        if self.popup.is_some() {
+            return self.click_popup(hit, double);
         }
         match hit {
             Some(Hit::Button(i)) => {
@@ -1613,6 +1715,12 @@ impl App {
                 self.section = Section::ALL[i];
                 self.focus = Focus::Content;
             }
+            Some(Hit::ModeToggle) => {
+                self.on_key(KeyEvent::new(KeyCode::Char('m'), KeyModifiers::NONE))
+            }
+            Some(Hit::LangToggle) => {
+                self.on_key(KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE))
+            }
             Some(Hit::Row(i)) => {
                 self.focus = Focus::Content;
                 let rows = self.rows();
@@ -1621,8 +1729,23 @@ impl App {
                 }
                 let again = self.form_state().sel == i;
                 self.form_state().sel = i;
-                if again && let Some(row) = rows.get(i).cloned() {
+                if (again || double)
+                    && let Some(row) = rows.get(i).cloned()
+                {
                     self.activate(row);
+                }
+            }
+            Some(Hit::Ctrl(i, sub)) => {
+                self.focus = Focus::Content;
+                let rows = self.rows();
+                self.form_state().sel = i;
+                match (sub, rows.get(i).cloned()) {
+                    (Sub::Minus | Sub::Plus, Some(Row::Field(f))) => {
+                        form::nudge(&mut self.store, &f, sub == Sub::Plus)
+                    }
+                    (Sub::Slider, _) => self.slide(i, x),
+                    (_, Some(row)) => self.activate(row),
+                    _ => {}
                 }
             }
             Some(Hit::Widget(s, i)) => {
@@ -1642,6 +1765,16 @@ impl App {
                 self.focus = Focus::Content;
                 self.widgets.col = s;
             }
+            Some(Hit::AddWidget(s)) => {
+                self.focus = Focus::Content;
+                self.widgets.col = s;
+                self.widgets.row[s] = sj::section(&self.store.json, s).len().saturating_sub(1);
+                self.open_add_widget();
+            }
+            Some(Hit::Search) => {
+                self.focus = Focus::Content;
+                self.plugins.filtering = true;
+            }
             Some(Hit::Plugin(i)) => {
                 self.focus = Focus::Content;
                 let again = self.plugins.sel == i;
@@ -1651,8 +1784,341 @@ impl App {
                     self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
                 }
             }
+            Some(Hit::PluginSwitch(i)) => {
+                self.focus = Focus::Content;
+                self.plugins.sel = i;
+                self.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+            }
             _ => {}
         }
+    }
+
+    fn click_popup(&mut self, hit: Option<Hit>, double: bool) {
+        let key = |c: KeyCode| KeyEvent::new(c, KeyModifiers::NONE);
+        match hit {
+            Some(Hit::PopupItem(i)) => match self.popup.as_mut() {
+                Some(Popup::Picker(p)) => {
+                    let again = p.sel == i;
+                    p.sel = i;
+                    // En un desplegable basta un clic; en la lista grande, doble.
+                    if again || double || p.anchor.is_some() {
+                        self.on_key(key(KeyCode::Enter));
+                    }
+                }
+                Some(Popup::Checklist(c)) => {
+                    c.sel = i;
+                    if let Some(x) = c.checked.get_mut(i) {
+                        *x = !*x;
+                    }
+                }
+                _ => {}
+            },
+            Some(Hit::MenuItem(i)) => {
+                if let Some(Popup::Menu(m)) = self.popup.as_mut() {
+                    m.sel = i;
+                }
+                self.on_key(key(KeyCode::Enter));
+            }
+            Some(Hit::ModalButton(i)) => {
+                if let Some(code) = self
+                    .popup
+                    .as_ref()
+                    .and_then(|p| p.buttons().get(i).map(|b| b.1))
+                {
+                    self.on_key(key(code));
+                }
+            }
+            // Un clic fuera cierra los menús y desplegables (como en Meca).
+            None => {
+                let light = matches!(self.popup, Some(Popup::Menu(_)))
+                    || matches!(&self.popup, Some(Popup::Picker(p)) if p.anchor.is_some());
+                if light {
+                    self.popup = None;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // ------------------------------------------------- menú contextual
+
+    /// Abre el menú contextual del elemento `hit` (clic derecho o tecla `o`).
+    pub fn open_menu(&mut self, hit: Option<Hit>, at: (u16, u16)) {
+        self.popup = None;
+        let mut items: Vec<MenuItem> = vec![];
+        let item = |icon: &'static str, label: String, act: MenuAct, enabled: bool| MenuItem {
+            icon,
+            label,
+            act,
+            enabled,
+        };
+        match hit {
+            Some(Hit::Row(i)) | Some(Hit::Ctrl(i, _)) => {
+                self.focus = Focus::Content;
+                self.form_state().sel = i;
+                match self.rows().get(i) {
+                    Some(Row::Field(f)) => {
+                        let label = match f.def.kind {
+                            Kind::Bool => t("menu.toggle"),
+                            Kind::Enum(_) | Kind::Multi(_) => t("menu.choose"),
+                            _ if !f.def.presets.is_empty() => t("menu.choose"),
+                            _ => t("menu.edit"),
+                        };
+                        items.push(item("󰏫", label, MenuAct::Activate(i), true));
+                        items.push(item(
+                            "󰑓",
+                            t("menu.reset_field"),
+                            MenuAct::ResetField(i),
+                            f.value.is_some(),
+                        ));
+                    }
+                    Some(Row::Action(label, _)) => {
+                        items.push(item("󰐊", label.clone(), MenuAct::Activate(i), true))
+                    }
+                    _ => {}
+                }
+            }
+            Some(Hit::Widget(s, i)) => {
+                self.focus = Focus::Content;
+                self.widgets.col = s;
+                self.widgets.row[s] = i;
+                items.push(item(
+                    "󰒓",
+                    t("menu.w.settings"),
+                    MenuAct::WidgetSettings(s, i),
+                    true,
+                ));
+                for to in 0..3 {
+                    if to != s {
+                        items.push(item(
+                            ["󰁍", "󰁌", "󰁔"][to],
+                            tf(
+                                "menu.w.move",
+                                &[("section", &t(&format!("col.{}", sj::SECTIONS[to])))],
+                            ),
+                            MenuAct::WidgetMove(s, i, to),
+                            true,
+                        ));
+                    }
+                }
+                items.push(item("󰐕", t("menu.w.add"), MenuAct::WidgetAdd(s), true));
+                items.push(item(
+                    "󰆴",
+                    t("menu.w.remove"),
+                    MenuAct::WidgetRemove(s, i),
+                    true,
+                ));
+            }
+            Some(Hit::Column(s)) | Some(Hit::AddWidget(s)) => {
+                self.widgets.col = s;
+                items.push(item("󰐕", t("menu.w.add"), MenuAct::WidgetAdd(s), true));
+            }
+            Some(Hit::Plugin(i)) | Some(Hit::PluginSwitch(i)) => {
+                self.focus = Focus::Content;
+                self.plugins.sel = i;
+                if let Some(p) = self.selected_plugin() {
+                    let on = self.store.plugin_enabled(&p);
+                    let label = match (p.is_bar_widget(), on) {
+                        (true, true) => t("menu.p.off_bar"),
+                        (true, false) => t("menu.p.on_bar"),
+                        (false, true) => t("menu.p.disable"),
+                        (false, false) => t("menu.p.enable"),
+                    };
+                    items.push(item(
+                        if on { "󰨙" } else { "󰔡" },
+                        label,
+                        MenuAct::PluginKey(i, 'E'),
+                        true,
+                    ));
+                    let can_clone = p.first_party && self.store.catalog.clone_of(&p.id).is_none();
+                    items.push(item(
+                        "󰆏",
+                        t("menu.p.clone"),
+                        MenuAct::PluginKey(i, 'p'),
+                        can_clone,
+                    ));
+                    items.push(item(
+                        "󰚰",
+                        t("menu.p.update"),
+                        MenuAct::PluginKey(i, 'u'),
+                        p.is_git,
+                    ));
+                    items.push(item(
+                        "󰆴",
+                        t("menu.p.remove"),
+                        MenuAct::PluginKey(i, 'x'),
+                        !p.first_party,
+                    ));
+                    if self.advanced {
+                        items.push(item(
+                            "󰈔",
+                            t("menu.p.edit"),
+                            MenuAct::PluginKey(i, 'e'),
+                            !p.first_party,
+                        ));
+                    }
+                }
+            }
+            Some(Hit::Sidebar(i)) => {
+                self.section = Section::ALL[i];
+            }
+            _ => {}
+        }
+        // Acciones generales, siempre al final.
+        let dirty = self.store.dirty();
+        items.push(item("󰄬", t("btn.apply"), MenuAct::Apply, dirty));
+        items.push(item("󰜺", t("btn.cancel"), MenuAct::Cancel, dirty));
+        items.push(item("󰑓", t(self.restore_scope().1), MenuAct::Restore, true));
+        items.push(item("󰋖", t("menu.help"), MenuAct::Help, true));
+        let sel = items.iter().position(|i| i.enabled).unwrap_or(0);
+        self.popup = Some(Popup::Menu(Menu { items, sel, at }));
+    }
+
+    /// Menú contextual desde el teclado (tecla `o`), junto a lo seleccionado.
+    fn open_menu_for_selection(&mut self) {
+        let hit = match (self.focus, self.section) {
+            (Focus::Content, Section::Widgets) if self.widgets.editing.is_none() => {
+                let col = self.widgets.col;
+                if sj::section(&self.store.json, col).is_empty() {
+                    Some(Hit::Column(col))
+                } else {
+                    Some(Hit::Widget(col, self.widgets.row[col]))
+                }
+            }
+            (Focus::Content, Section::Plugins) => Some(Hit::Plugin(self.plugins.sel)),
+            (Focus::Content, _) => {
+                let sel = self.form_state().sel;
+                Some(Hit::Ctrl(sel, Sub::Main))
+            }
+            _ => None,
+        };
+        let at = hit
+            .and_then(|h| {
+                self.hit_rect(h).or_else(|| match h {
+                    Hit::Ctrl(i, _) => self.hit_rect(Hit::Row(i)),
+                    _ => None,
+                })
+            })
+            .map(|r| (r.x, r.y + 1))
+            .unwrap_or((10, 5));
+        self.open_menu(hit, at);
+    }
+
+    fn run_menu(&mut self, act: MenuAct) {
+        let key = |c: char| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE);
+        match act {
+            MenuAct::Activate(i) => {
+                self.form_state().sel = i;
+                if let Some(row) = self.rows().get(i).cloned() {
+                    self.activate(row);
+                }
+            }
+            MenuAct::ResetField(i) => {
+                if let Some(Row::Field(f)) = self.rows().get(i) {
+                    self.store.unset(&f.bind);
+                }
+            }
+            MenuAct::WidgetSettings(s, i) => {
+                self.widgets.editing = Some((s, i));
+                self.widgets.form = FormState::default();
+            }
+            MenuAct::WidgetMove(s, i, to) => {
+                let idx = sj::section(&self.store.json, to).len();
+                if let Some((s2, i2)) = sj::move_entry(&mut self.store.json, (s, i), to, idx) {
+                    self.widgets.col = s2;
+                    self.widgets.row[s2] = i2;
+                }
+            }
+            MenuAct::WidgetAdd(s) => {
+                self.widgets.col = s;
+                self.open_add_widget();
+            }
+            MenuAct::WidgetRemove(s, i) => {
+                sj::remove_entry(&mut self.store.json, s, i);
+                self.clamp_views();
+            }
+            MenuAct::PluginKey(i, c) => {
+                self.focus = Focus::Content;
+                self.plugins.sel = i;
+                let k = if c == 'E' {
+                    KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)
+                } else {
+                    key(c)
+                };
+                self.plugins_key(k);
+            }
+            MenuAct::Apply => self.request_apply(),
+            MenuAct::Cancel => self.request_discard(),
+            MenuAct::Restore => self.request_restore(),
+            MenuAct::Help => self.popup = Some(Popup::Help { scroll: 0 }),
+        }
+    }
+
+    // ------------------------------------------------- pistas al pasar
+
+    /// Explicación del elemento bajo el ratón, para la barra de estado.
+    pub fn hover_hint(&self) -> Option<String> {
+        let hit = self.hover?;
+        Some(match hit {
+            Hit::Sidebar(i) => Section::ALL[i].description(),
+            Hit::ModeToggle => t("hint.mode"),
+            Hit::LangToggle => t("hint.lang"),
+            Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
+                Row::Field(f) => {
+                    let what = match f.def.kind {
+                        Kind::Bool => t("hint.click_toggle"),
+                        Kind::Enum(_) | Kind::Multi(_) => t("hint.click_choose"),
+                        _ if !f.def.presets.is_empty() => t("hint.click_choose"),
+                        Kind::Float {
+                            min: Some(_),
+                            max: Some(_),
+                            ..
+                        } => t("hint.click_slide"),
+                        Kind::Int { .. } | Kind::Float { .. } => t("hint.click_step"),
+                        _ => t("hint.click_edit"),
+                    };
+                    format!("{} — {what}", f.def.label)
+                }
+                Row::Action(label, _) => format!("{label} — {}", t("hint.click_run")),
+                _ => return None,
+            },
+            Hit::Ctrl(_, Sub::Minus) => t("hint.minus"),
+            Hit::Ctrl(_, Sub::Plus) => t("hint.plus"),
+            Hit::Ctrl(_, Sub::Slider) => t("hint.slider"),
+            Hit::Widget(s, i) => {
+                let e = sj::section(&self.store.json, s).get(i)?;
+                let id = sj::entry_id(e);
+                format!(
+                    "{} — {}",
+                    curated::widget_name(&id, Some(e), &self.store.catalog),
+                    t("hint.widget")
+                )
+            }
+            Hit::Column(_) => t("hint.column"),
+            Hit::AddWidget(_) => t("hint.add_widget"),
+            Hit::Search => t("hint.search"),
+            Hit::Plugin(_) => t("hint.plugin"),
+            Hit::PluginSwitch(_) => t("hint.plugin_switch"),
+            Hit::Button(i) => match Button::ALL[i] {
+                Button::Apply if self.store.dirty() => tf(
+                    "btn.apply.desc",
+                    &[(
+                        "n",
+                        &(self.store.changes().len() + self.store.ops.len()).to_string(),
+                    )],
+                ),
+                Button::Cancel if self.store.dirty() => t("btn.cancel.desc"),
+                Button::Apply | Button::Cancel => t("btn.clean"),
+                Button::Restore => t(&format!("{}.desc", self.restore_scope().1)),
+            },
+            Hit::PopupItem(i) => match &self.popup {
+                Some(Popup::Picker(p)) => p.items.get(i).map(|it| it.detail.clone())?,
+                Some(Popup::Checklist(c)) => c.opts.get(i).map(|o| o.desc.clone())?,
+                _ => return None,
+            },
+            Hit::MenuItem(_) | Hit::ModalButton(_) => return None,
+        })
+        .filter(|s| !s.is_empty())
     }
 }
 

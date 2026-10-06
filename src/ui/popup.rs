@@ -90,6 +90,9 @@ pub struct Picker {
     pub filter: String,
     pub target: PickTarget,
     pub current: Option<Value>,
+    /// Si existe, se dibuja como desplegable pegado a ese control (estilo
+    /// Meca); si no, como ventana centrada con buscador.
+    pub anchor: Option<ratatui::layout::Rect>,
 }
 
 /// Minúsculas y sin acentos, para buscar "micro" y encontrar "Micrófono".
@@ -136,6 +139,40 @@ pub struct Checklist {
     pub bind: Bind,
 }
 
+/// Acción de una entrada del menú contextual.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MenuAct {
+    Activate(usize),
+    ResetField(usize),
+    WidgetSettings(usize, usize),
+    WidgetMove(usize, usize, usize),
+    WidgetAdd(usize),
+    WidgetRemove(usize, usize),
+    /// Tecla a reenviar a la lista de plugins (`E` = Enter).
+    PluginKey(usize, char),
+    Apply,
+    Cancel,
+    Restore,
+    Help,
+}
+
+#[derive(Debug, Clone)]
+pub struct MenuItem {
+    pub icon: &'static str,
+    pub label: String,
+    pub act: MenuAct,
+    pub enabled: bool,
+}
+
+/// Menú contextual (clic derecho o tecla `o`).
+#[derive(Debug, Clone)]
+pub struct Menu {
+    pub items: Vec<MenuItem>,
+    pub sel: usize,
+    /// Esquina donde se abre (posición del ratón).
+    pub at: (u16, u16),
+}
+
 #[derive(Debug, Clone)]
 pub enum Popup {
     Confirm {
@@ -157,6 +194,30 @@ pub enum Popup {
     Help {
         scroll: u16,
     },
+    Menu(Menu),
+}
+
+impl Popup {
+    /// Botones clicables de la ventana: (clave de texto, tecla equivalente).
+    pub fn buttons(&self) -> Vec<(&'static str, KeyCode)> {
+        match self {
+            Popup::Confirm { .. } => vec![("mb.cancel", KeyCode::Esc), ("mb.ok", KeyCode::Enter)],
+            Popup::Message { .. } => vec![("mb.ok", KeyCode::Enter)],
+            Popup::Help { .. } => vec![("mb.close", KeyCode::Enter)],
+            Popup::Conflict { .. } => vec![
+                ("mb.cancel", KeyCode::Esc),
+                ("mb.reload", KeyCode::Char('r')),
+                ("mb.overwrite", KeyCode::Char('o')),
+            ],
+            Popup::Input(_) | Popup::Checklist(_) => {
+                vec![("mb.cancel", KeyCode::Esc), ("mb.save", KeyCode::Enter)]
+            }
+            Popup::Picker(p) if p.anchor.is_none() => {
+                vec![("mb.cancel", KeyCode::Esc), ("mb.choose", KeyCode::Enter)]
+            }
+            Popup::Picker(_) | Popup::Menu(_) => vec![],
+        }
+    }
 }
 
 /// Resultado de procesar una tecla dentro de un popup.
@@ -171,6 +232,7 @@ pub enum Outcome {
     Checked(Bind, Vec<Value>),
     ConflictOverwrite,
     ConflictReload,
+    MenuPick(MenuAct),
 }
 
 fn edit_line(input: &mut Input, key: KeyEvent) -> bool {
@@ -313,6 +375,35 @@ impl Popup {
                     p.sel = f;
                 }
                 Outcome::Stay
+            }
+            Popup::Menu(m) => {
+                let n = m.items.len();
+                let step = |from: usize, fwd: bool| {
+                    let mut i = from;
+                    for _ in 0..n {
+                        i = if fwd { (i + 1) % n } else { (i + n - 1) % n };
+                        if m.items[i].enabled {
+                            return i;
+                        }
+                    }
+                    from
+                };
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('o') => Outcome::Close,
+                    KeyCode::Up | KeyCode::Char('k') => {
+                        m.sel = step(m.sel, false);
+                        Outcome::Stay
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        m.sel = step(m.sel, true);
+                        Outcome::Stay
+                    }
+                    KeyCode::Enter | KeyCode::Char(' ') => match m.items.get(m.sel) {
+                        Some(it) if it.enabled => Outcome::MenuPick(it.act),
+                        _ => Outcome::Stay,
+                    },
+                    _ => Outcome::Stay,
+                }
             }
             Popup::Checklist(c) => match key.code {
                 KeyCode::Esc => Outcome::Close,

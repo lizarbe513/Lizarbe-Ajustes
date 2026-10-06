@@ -82,8 +82,24 @@ meca-qs --config-dir /tmp/prueba   # probar sobre una copia (no habla con el she
 | **Widgets:** `⇧+flechas` o `H J K L` | Mover el widget |
 | **Widgets:** `n` / `d` | Añadir / quitar widget |
 | **Plugins:** `Enter` `/` `n` `p` `u` `x` | Activar · buscar · instalar desde git · personalizar · actualizar · eliminar |
+| `o` | Menú contextual del elemento seleccionado |
 
-Ratón: clic para elegir, doble clic para abrir ajustes, arrastrar widgets entre columnas, rueda para desplazarse.
+### Ratón
+
+La interfaz sigue el estilo de **Meca**: todo lo clicable reacciona al pasar el ratón y la barra
+inferior explica qué hace cada elemento.
+
+| Gesto | Qué hace |
+| :--- | :--- |
+| **Pasar el ratón** | Resalta filas, controles y botones, y muestra una explicación en la barra inferior. |
+| **Clic** | Elige; sobre un control lo cambia directamente: interruptor `■`, botones `−`/`+`, deslizador `──●──` (clic o arrastre) y listas `▾`, que se abren pegadas al control. |
+| **Doble clic** | Abre los ajustes de un widget o activa un plugin. |
+| **Clic derecho** | Menú contextual con las acciones del elemento (también con la tecla `o`). |
+| **Arrastrar** | Mueve widgets entre columnas; sobre un deslizador cambia el valor en vivo. |
+| **Rueda** | Desplaza la lista; sobre el panel izquierdo cambia de sección. |
+
+En el panel izquierdo, **Modo** e **Idioma** también se cambian con un clic. Las ventanas de
+confirmación tienen botones en relieve que se pueden pulsar.
 
 ## 🗂️ Qué archivos toca
 
@@ -131,4 +147,7 @@ Omarchy's **Quickshell** shell. It shows up as **Quickshell** under
   current screen to Omarchy's factory values as a pending change you can apply or cancel).
 
 Simple/advanced mode with `m`, Spanish/English with `i`, help with `?`.
+The look follows **Meca**: everything clickable reacts on hover, the bottom bar explains what is under
+the mouse, controls are clickable (switches, −/+ steppers, sliders, anchored dropdowns) and
+right-click (or `o`) opens a context menu.
 Install with `./install.sh`, remove with `./uninstall.sh`. Run `meca-qs --help` for options.
