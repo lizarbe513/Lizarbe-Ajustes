@@ -1,12 +1,32 @@
-# Lizarbe Ajustes — Widgets
+# Lizarbe Ajustes — Escritorio y Widgets
 
-> **Widgets** (`lizarbe-widgets`) es el panel TUI para configurar la barra, los widgets, los
-> plugins y la apariencia del shell **Quickshell** de [Omarchy](https://omarchy.org), sin editar
-> JSON a mano. Aparece en el menú como **Widgets y barra**: `Menu → Setup → Widgets y barra`.
+> Configuración de [Omarchy](https://omarchy.org) por interfaz TUI, sin editar archivos de texto.
+> Este repositorio es un *workspace* de Rust con dos aplicaciones y un núcleo compartido:
 >
-> Este repositorio es un *workspace* de Rust que reúne las TUIs de configuración Lizarbe:
-> `crates/core` (núcleo compartido) y `crates/widgets`. **Escritorio** (el port de Meca, para
-> Hyprland) se sumará como `crates/escritorio`.
+> - **Escritorio** (`lizarbe-escritorio`): apariencia y comportamiento de las ventanas de
+>   Hyprland (espacios, bordes, transparencia, desenfoque, sombras, animaciones, disposición,
+>   escritorios, foco). *En desarrollo:* reemplazará a Meca HyprConfig.
+> - **Widgets** (`lizarbe-widgets`): barra, widgets, plugins y apariencia del shell
+>   **Quickshell**. En el menú: `Menu → Setup → Widgets y barra`.
+> - `crates/core`: idioma, preferencias, tema, escritura segura, Hyprland y piezas de interfaz
+>   comunes, para que las dos apps se usen igual.
+
+## Escritorio
+
+Guarda **solo lo que cambias** en `~/.config/hypr/escritorio.lua`, que se carga después de tus
+archivos (`looknfeel.lua`, `input.lua`…) y antes de los *toggles* de Omarchy, así que el modo
+«sin espacios» de Omarchy sigue funcionando. Al pulsar **Aplicar** hace una copia de seguridad,
+escribe de forma atómica y recarga Hyprland; si Hyprland informa un error, deshace los cambios.
+**Restaurar** devuelve una sección (o todo) a los valores de Omarchy.
+
+```bash
+lizarbe-escritorio                        # o búscalo como "Escritorio" en el lanzador
+lizarbe-escritorio --section ventanas     # apariencia, ventanas, cambios
+lizarbe-escritorio --config-dir /tmp/x    # probar sobre una carpeta (no recarga Hyprland)
+```
+
+Mientras Meca HyprConfig siga activo (carga `hyprland-gui.lua` al final), sus valores pisan a
+los de Escritorio; la app lo avisa.
 
 *[English below](#english)*
 

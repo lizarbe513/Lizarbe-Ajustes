@@ -326,7 +326,14 @@ pub type Hint = (String, String, u8);
 
 /// Barra de estado: `status` a la izquierda y los atajos que quepan a la
 /// derecha.
-pub fn status_bar(f: &mut Frame, pal: &Palette, area: Rect, status: &str, bold: bool, hints: &[Hint]) {
+pub fn status_bar(
+    f: &mut Frame,
+    pal: &Palette,
+    area: Rect,
+    status: &str,
+    bold: bool,
+    hints: &[Hint],
+) {
     let base = Style::new().fg(pal.bright).bg(pal.soft_muted);
     let status_style = if bold {
         base.add_modifier(Modifier::BOLD)
@@ -374,7 +381,10 @@ mod tests {
         assert_eq!(truncate("abcdef", 4), "abc…");
         assert_eq!(center("ab", 6), "  ab  ");
         assert_eq!(right_align("ab", 4), "  ab");
-        assert_eq!(wrap("uno dos tres cuatro", 9), vec!["uno dos", "tres", "cuatro"]);
+        assert_eq!(
+            wrap("uno dos tres cuatro", 9),
+            vec!["uno dos", "tres", "cuatro"]
+        );
     }
 
     #[test]

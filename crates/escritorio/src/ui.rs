@@ -1,23 +1,19 @@
-//! Dibujo de la interfaz, con el estilo visual de Meca: barra de título en
-//! color de acento, sidebar por categorías, filas de tres líneas con controles
-//! en relieve, botones 3D y barra de estado inferior. Todo elemento clicable
-//! reacciona al pasar el ratón.
+//! Dibujo de Escritorio con las piezas compartidas del núcleo: barra de
+//! título, barra lateral, formularios, botones y barra de estado.
 
-pub mod form;
-pub mod popup;
-mod views;
-
-use lizarbe_core::ui::{Hint, header_bar, status_bar};
-pub(crate) use lizarbe_core::ui::{fg, pad, put, truncate, wrap};
-use lizarbe_core::view::{Ctx, SideItem, SideToggle};
+use lizarbe_core::form::NoteKind;
+use lizarbe_core::ui::{Hint, fg, header_bar, put, status_bar};
+use lizarbe_core::view::{self, ButtonSpec, Ctx, FormOpts, RowInfo, SideItem, SideToggle};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::text::Span;
 
-use crate::app::{App, Focus, Hit, Section};
+use crate::app::{App, Button, FieldRow, Focus, Hit, Popup, Section};
+use crate::catalog::CATEGORIES;
 use crate::i18n::{self, t, tf};
-use form::NoteKind;
-use popup::Popup;
+
+/// Alto de la zona de botones: separador + botones de 3 líneas.
+const BUTTONS_H: u16 = 4;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     app.hits.clear();
@@ -41,7 +37,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     for y in sep.y..sep.bottom() {
         put(f, sep.x, y, vec![Span::styled("│", fg(app.pal.muted))]);
     }
-    views::draw_content(f, app, content);
+    draw_content(f, app, content);
     draw_footer(f, app, footer);
 
     if let Some(popup) = app.popup.as_mut() {
@@ -55,8 +51,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-/// Contexto de dibujo para las piezas del núcleo.
-pub(crate) fn ctx(app: &mut App) -> Ctx<'_, Hit> {
+fn ctx(app: &mut App) -> Ctx<'_, Hit> {
     Ctx {
         pal: &app.pal,
         hover: app.hover,
@@ -65,32 +60,21 @@ pub(crate) fn ctx(app: &mut App) -> Ctx<'_, Hit> {
     }
 }
 
-/// ¿Está el ratón sobre este elemento (y no hay ventana encima)?
-pub(crate) fn hovered(app: &App, hit: Hit) -> bool {
-    app.popup.is_none() && app.hover == Some(hit)
-}
-
-// ---------------------------------------------------------------- cabecera
-
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let left = format!(
-        " 󰕮 {}  ·  {} ",
-        t("app.name").to_uppercase(),
-        t("app.subtitle")
-    );
-    let left_short = format!(" 󰕮 {} ", t("app.name").to_uppercase());
+    let name = t("app.name").to_uppercase();
+    let left = format!("   {name}  ·  {} ", t("app.subtitle"));
+    let left_short = format!("   {name} ");
     let mut parts: Vec<String> = vec![];
     if app.store.dirty() {
-        let n = app.store.changes().len() + app.store.ops.len();
         parts.push(format!(
             "*{}*",
-            tf("hdr.pending", &[("n", &n.to_string())]).to_uppercase()
+            tf("hdr.pending", &[("n", &app.pending().to_string())]).to_uppercase()
         ));
     }
     if app.store.paths.sandbox {
         parts.push("sandbox".into());
-    } else if !app.shell_running {
-        parts.push(t("hdr.shell_off"));
+    } else if !app.store.live {
+        parts.push(t("hdr.offline"));
     }
     parts.push(if app.advanced {
         t("hdr.advanced")
@@ -102,21 +86,9 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
     header_bar(f, &app.pal, area, &left, &left_short, &parts);
 }
 
-// ---------------------------------------------------------------- sidebar
-
-/// Categorías del sidebar: (clave de texto, secciones).
-const CATEGORIES: [(&str, &[Section]); 3] = [
-    ("cat.bar", &[Section::Bar, Section::Widgets]),
-    (
-        "cat.system",
-        &[Section::Plugins, Section::Idle, Section::Appearance],
-    ),
-    ("cat.review", &[Section::Changes]),
-];
-
 fn draw_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
     let active = app.focus == Focus::Sidebar && app.popup.is_none();
-    let pending = app.store.changes().len() + app.store.ops.len();
+    let pending = app.pending();
     let categories: Vec<(String, Vec<SideItem>)> = CATEGORIES
         .iter()
         .map(|(cat, sections)| {
@@ -124,7 +96,7 @@ fn draw_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
                 .iter()
                 .map(|s| {
                     let mut title = s.title();
-                    if *s == Section::Changes && app.store.dirty() {
+                    if *s == Section::Changes && pending > 0 {
                         title.push_str(&format!(" ({pending})"));
                     }
                     SideItem {
@@ -159,10 +131,103 @@ fn draw_sidebar(f: &mut Frame, app: &mut App, area: Rect) {
             },
         },
     ];
-    lizarbe_core::view::draw_sidebar(f, &mut ctx(app), area, &categories, &toggles, active);
+    view::draw_sidebar(f, &mut ctx(app), area, &categories, &toggles, active);
 }
 
-// ---------------------------------------------------------------- pie
+fn draw_content(f: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focus == Focus::Content && app.popup.is_none();
+    let x = area.x + 1;
+    let w = area.width.saturating_sub(2);
+    if area.height < 10 || w < 30 {
+        return;
+    }
+    view::section_header(
+        f,
+        &app.pal,
+        Rect::new(x, area.y, w, 3),
+        &app.section.title(),
+        &app.section.description(),
+        focused,
+    );
+
+    let body = Rect::new(x, area.y + 3, w, area.height.saturating_sub(3 + BUTTONS_H));
+    draw_form(f, app, body, focused);
+
+    let sep_y = area.bottom() - BUTTONS_H;
+    put(
+        f,
+        x,
+        sep_y,
+        vec![Span::styled("─".repeat(w as usize), fg(app.pal.muted))],
+    );
+    draw_buttons(f, app, Rect::new(x, sep_y + 1, w, 3));
+}
+
+fn draw_form(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
+    let rows = app.rows();
+    let opts = FormOpts {
+        focused,
+        dropdown_open: matches!(&app.popup, Some(Popup::Picker(p)) if p.anchor.is_some()),
+    };
+    let advanced = app.advanced;
+    let App {
+        store,
+        pal,
+        hover,
+        hits,
+        popup,
+        forms,
+        section,
+        ..
+    } = app;
+    let st = &mut forms[section.index()];
+    let mut ctx = Ctx {
+        pal,
+        hover: *hover,
+        hits,
+        blocked: popup.is_some(),
+    };
+    let info = |fr: &FieldRow| RowInfo {
+        changed: lizarbe_core::form::FieldStore::get_original(store, &fr.bind) != fr.value,
+        extra: advanced.then(|| {
+            format!(
+                "{}: {} · {}: {}",
+                t("help.key"),
+                fr.def.key,
+                t("help.default"),
+                fr.def
+                    .default
+                    .as_ref()
+                    .map(lizarbe_core::schema::value_label)
+                    .unwrap_or_else(|| "—".into())
+            )
+        }),
+    };
+    view::draw_form(f, &mut ctx, area, &rows, st, &opts, info);
+}
+
+fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
+    let focused = app.focus == Focus::Buttons && app.popup.is_none();
+    let buttons: Vec<ButtonSpec> = Button::ALL
+        .iter()
+        .map(|b| ButtonSpec {
+            label: b.label(),
+            enabled: app.button_enabled(*b),
+            primary: *b == Button::Apply,
+        })
+        .collect();
+    let pending = app.pending();
+    let (status, color) = if pending > 0 {
+        (
+            format!("● {}", tf("btn.pending", &[("n", &pending.to_string())])),
+            app.pal.warn,
+        )
+    } else {
+        (format!("✓ {}", t("btn.clean")), app.pal.muted)
+    };
+    let selected = focused.then_some(app.button);
+    view::draw_buttons(f, &mut ctx(app), area, &buttons, selected, (&status, color));
+}
 
 fn footer_hints(app: &App) -> Vec<Hint> {
     let k = |a: &str, b: &str, p: u8| (a.to_string(), t(b), p);
@@ -200,32 +265,15 @@ fn footer_hints(app: &App) -> Vec<Hint> {
             ],
         };
     }
-    let mut v = vec![];
-    match (app.focus, app.section) {
-        (Focus::Sidebar, _) => {
-            v.push(k("↑↓", "ft.section", 1));
-            v.push(k("Enter", "ft.open", 2));
-        }
-        (Focus::Buttons, _) => {
-            v.push(k("←→", "ft.choose_button", 2));
-            v.push(k("Enter", "ft.press", 3));
-        }
-        (Focus::Content, Section::Widgets) if app.widgets.editing.is_none() => {
-            v.push(k("⇧+←→↑↓", "ft.reorder", 1));
-            v.push(k("Enter", "ft.settings", 2));
-            v.push(k("n", "ft.add", 2));
-            v.push(k("d", "ft.remove", 2));
-        }
-        (Focus::Content, Section::Plugins) => {
-            v.push(k("Enter", "ft.toggle", 2));
-            v.push(k("/", "ft.filter", 1));
-        }
-        _ => {
-            v.push(k("←→", "ft.change", 2));
-            v.push(k("Enter", "ft.edit", 2));
-            v.push(k("r", "ft.reset", 1));
-        }
-    }
+    let mut v = match app.focus {
+        Focus::Sidebar => vec![k("↑↓", "ft.section", 1), k("Enter", "ft.open", 2)],
+        Focus::Buttons => vec![k("←→", "ft.choose_button", 2), k("Enter", "ft.press", 3)],
+        Focus::Content => vec![
+            k("←→", "ft.change", 2),
+            k("Enter", "ft.edit", 2),
+            k("r", "ft.reset", 1),
+        ],
+    };
     v.push(k("o", "ft.menu", 1));
     v.push(k("Tab", "ft.next_area", 0));
     v.push(k("?", "ft.help", 3));
@@ -233,7 +281,6 @@ fn footer_hints(app: &App) -> Vec<Hint> {
 }
 
 fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
-    // Izquierda: aviso reciente, o la explicación de lo que hay bajo el ratón.
     let status = match &app.toast {
         Some(toast) => {
             let icon = match toast.kind {

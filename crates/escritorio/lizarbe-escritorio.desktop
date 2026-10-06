@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Escritorio
+GenericName=Ventanas y apariencia de Omarchy
+GenericName[en]=Omarchy windows and appearance
+Comment=Configura los espacios, bordes, transparencia, animaciones y ventanas de Hyprland
+Comment[en]=Configure Hyprland gaps, borders, transparency, animations and windows
+Exec=omarchy-launch-tui --app-id=org.omarchy.lizarbe-escritorio lizarbe-escritorio
+Icon=preferences-desktop
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;System;
+Keywords=hyprland;omarchy;escritorio;desktop;ventanas;windows;gaps;blur;animaciones;tui;lizarbe;

@@ -2,6 +2,7 @@
 //! Widgets): idioma, preferencias, paleta del tema, escritura segura de
 //! archivos, comunicación con Hyprland y primitivas de dibujo.
 
+pub mod field;
 pub mod form;
 pub mod fsutil;
 pub mod hypr;
@@ -10,8 +11,8 @@ pub mod ipc;
 pub mod modal;
 pub mod popup;
 pub mod prefs;
-pub mod term;
 pub mod schema;
+pub mod term;
 pub mod theme;
 pub mod ui;
 pub mod view;

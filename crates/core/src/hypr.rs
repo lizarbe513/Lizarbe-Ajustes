@@ -17,12 +17,39 @@ pub fn available() -> bool {
 /// Valor de una opción tal como lo devuelve `hyprctl getoption -j`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum OptValue {
+    Bool(bool),
     Int(i64),
     Float(f64),
     Str(String),
     /// Valores compuestos que Hyprland da como texto (p. ej. `"5 5 5 5"`).
     Css(String),
+    Vec2(f64, f64),
+    /// Colores de borde (`"ff7fbbb3 0deg"`).
+    Gradient(String),
     Other(Value),
+}
+
+impl OptValue {
+    /// Valor en JSON para los formularios. Los `css` toman el primer número
+    /// (Hyprland da `gaps_in` como `"5 5 5 5"`).
+    pub fn to_json(&self) -> Value {
+        match self {
+            OptValue::Bool(b) => Value::Bool(*b),
+            OptValue::Int(i) => Value::from(*i),
+            OptValue::Float(f) => serde_json::Number::from_f64((*f * 1000.0).round() / 1000.0)
+                .map(Value::Number)
+                .unwrap_or(Value::Null),
+            OptValue::Str(s) | OptValue::Gradient(s) => Value::String(s.clone()),
+            OptValue::Css(s) => s
+                .split_whitespace()
+                .next()
+                .and_then(|n| n.parse::<i64>().ok())
+                .map(Value::from)
+                .unwrap_or_else(|| Value::String(s.clone())),
+            OptValue::Vec2(x, y) => serde_json::json!([x, y]),
+            OptValue::Other(v) => v.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,7 +63,9 @@ pub fn parse_option(json: &str) -> Result<HyprOption, String> {
     let v: Value = serde_json::from_str(json).map_err(|_| json.trim().to_string())?;
     let obj = v.as_object().ok_or_else(|| json.trim().to_string())?;
     let set = obj.get("set").and_then(Value::as_bool).unwrap_or(false);
-    let value = if let Some(i) = obj.get("int").and_then(Value::as_i64) {
+    let value = if let Some(b) = obj.get("bool").and_then(Value::as_bool) {
+        OptValue::Bool(b)
+    } else if let Some(i) = obj.get("int").and_then(Value::as_i64) {
         OptValue::Int(i)
     } else if let Some(f) = obj.get("float").and_then(Value::as_f64) {
         OptValue::Float(f)
@@ -44,6 +73,15 @@ pub fn parse_option(json: &str) -> Result<HyprOption, String> {
         OptValue::Str(s.to_string())
     } else if let Some(s) = obj.get("css").and_then(Value::as_str) {
         OptValue::Css(s.to_string())
+    } else if let Some(s) = obj.get("gradient").and_then(Value::as_str) {
+        OptValue::Gradient(s.to_string())
+    } else if let Some([x, y]) = obj
+        .get("vec2")
+        .and_then(Value::as_array)
+        .and_then(|a| <&[Value; 2]>::try_from(a.as_slice()).ok())
+        && let (Some(x), Some(y)) = (x.as_f64(), y.as_f64())
+    {
+        OptValue::Vec2(x, y)
     } else {
         let mut rest = obj.clone();
         rest.remove("option");
@@ -59,9 +97,38 @@ pub fn getoption(name: &str) -> Result<HyprOption, String> {
     parse_option(&ipc::run("hyprctl", &["getoption", name, "-j"])?)
 }
 
+/// Respuestas de `hyprctl --batch "j/getoption a; j/getoption b; …"`, que
+/// llegan en orden y separadas por líneas en blanco.
+pub fn parse_batch(output: &str, n: usize) -> Vec<Result<HyprOption, String>> {
+    let mut parts: Vec<Result<HyprOption, String>> = output
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(parse_option)
+        .collect();
+    parts.resize_with(n, || Err("hyprctl".into()));
+    parts.truncate(n);
+    parts
+}
+
+/// Valores efectivos de varias opciones con una sola llamada a `hyprctl`.
+pub fn getoptions(names: &[&str]) -> Vec<Result<HyprOption, String>> {
+    if names.is_empty() {
+        return vec![];
+    }
+    let batch: Vec<String> = names.iter().map(|n| format!("j/getoption {n}")).collect();
+    match ipc::run("hyprctl", &["--batch", &batch.join("; ")]) {
+        Ok(out) => parse_batch(&out, names.len()),
+        Err(e) => names.iter().map(|_| Err(e.clone())).collect(),
+    }
+}
+
 /// Ejecuta Lua en el Hyprland en marcha (vista previa sin tocar archivos).
 pub fn eval(lua: &str) -> Result<(), String> {
-    ipc::run("hyprctl", &["eval", lua]).map(|_| ())
+    // Un código que empieza por "--" (comentario de Lua) hyprctl lo tomaría
+    // por una opción de línea de comandos.
+    let code = format!("\n{lua}");
+    ipc::run("hyprctl", &["eval", &code]).map(|_| ())
 }
 
 pub fn reload() -> Result<(), String> {
@@ -153,24 +220,69 @@ mod tests {
 
     #[test]
     fn parses_option_kinds() {
-        let o = parse_option(r#"{"option": "decoration:rounding", "int": 0, "set": true }"#)
-            .unwrap();
+        let o =
+            parse_option(r#"{"option": "decoration:rounding", "int": 0, "set": true }"#).unwrap();
         assert_eq!(o.value, OptValue::Int(0));
         assert!(o.set);
         let o = parse_option(r#"{"option": "general:gaps_in", "css": "5 5 5 5", "set": true }"#)
             .unwrap();
         assert_eq!(o.value, OptValue::Css("5 5 5 5".into()));
-        let o = parse_option(r#"{"option": "input:kb_options", "str": "compose:rwin", "set": false }"#)
-            .unwrap();
+        let o =
+            parse_option(r#"{"option": "input:kb_options", "str": "compose:rwin", "set": false }"#)
+                .unwrap();
         assert_eq!(o.value, OptValue::Str("compose:rwin".into()));
         assert!(!o.set);
         let o = parse_option(r#"{"option": "x", "float": 0.5, "set": true }"#).unwrap();
         assert_eq!(o.value, OptValue::Float(0.5));
+        let o = parse_option(r#"{"option": "general:snap:enabled", "bool": false, "set": true }"#)
+            .unwrap();
+        assert_eq!(o.value, OptValue::Bool(false));
+        let o = parse_option(
+            r#"{"option": "layout:single_window_aspect_ratio", "vec2": [4,3], "set": true }"#,
+        )
+        .unwrap();
+        assert_eq!(o.value, OptValue::Vec2(4.0, 3.0));
+        let o = parse_option(
+            r#"{"option": "general:col.active_border", "gradient": "ff7fbbb3 0deg", "set": true }"#,
+        )
+        .unwrap();
+        assert_eq!(o.value, OptValue::Gradient("ff7fbbb3 0deg".into()));
+    }
+
+    #[test]
+    fn parses_batch_in_order() {
+        let out = "{\"option\": \"general:gaps_in\", \"css\": \"5 5 5 5\", \"set\": true }\n\n\n\
+                   no such option\n\n\n\
+                   {\"option\": \"input:sensitivity\", \"float\": 0.000000, \"set\": true }\n";
+        let r = parse_batch(out, 3);
+        assert_eq!(
+            r[0].as_ref().unwrap().value,
+            OptValue::Css("5 5 5 5".into())
+        );
+        assert!(r[1].is_err());
+        assert_eq!(r[2].as_ref().unwrap().value, OptValue::Float(0.0));
+        assert_eq!(parse_batch("", 2).len(), 2, "rellena si falta salida");
+    }
+
+    #[test]
+    fn converts_to_json() {
+        assert_eq!(
+            OptValue::Css("5 5 5 5".into()).to_json(),
+            serde_json::json!(5)
+        );
+        assert_eq!(
+            OptValue::Float(0.30000001).to_json(),
+            serde_json::json!(0.3)
+        );
+        assert_eq!(OptValue::Bool(true).to_json(), serde_json::json!(true));
     }
 
     #[test]
     fn unknown_option_is_an_error() {
-        assert_eq!(parse_option("no such option\n"), Err("no such option".into()));
+        assert_eq!(
+            parse_option("no such option\n"),
+            Err("no such option".into())
+        );
     }
 
     #[test]

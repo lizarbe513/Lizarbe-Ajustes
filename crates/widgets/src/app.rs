@@ -3,13 +3,13 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
 use lizarbe_core::prefs::Prefs;
 use lizarbe_core::term::{Command, TuiApp};
 use lizarbe_core::theme::Palette;
 use ratatui::Frame;
+use ratatui::crossterm::event::{
+    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::{Position, Rect};
 use serde_json::{Value, json};
 
@@ -23,14 +23,14 @@ use crate::omarchy::shell_toml as st;
 use crate::store::{Bind, Scope, Store};
 use crate::ui::form::{self, Act, FieldRow, FormState, NoteKind, Row};
 use crate::ui::popup::{
-    Checklist, Confirm, HelpContent, Input, InputTarget, Menu, MenuAct, MenuItem, Outcome,
-    PickItem, PickTarget, Picker, Popup, WInput, WPick, fold,
+    Confirm, HelpContent, Input, InputTarget, Menu, MenuAct, MenuItem, Outcome, PickItem,
+    PickTarget, Picker, Popup, WInput, WPick, fold,
 };
+use lizarbe_core::field::{self, Activation};
 use lizarbe_core::view::CoreHit;
 pub use lizarbe_core::view::Sub;
 
 /// Marcadores de opciones especiales en los selectores.
-const PICK_CUSTOM: &str = "\u{0}custom";
 const PICK_CMD: &str = "\u{0}command";
 const PICK_QML: &str = "\u{0}qml";
 
@@ -888,68 +888,10 @@ impl App {
     }
 
     fn activate_field(&mut self, f: FieldRow) {
-        let def = f.def.clone();
-        match &def.kind {
-            Kind::Bool => form::nudge(&mut self.store, &f, true),
-            Kind::Enum(opts) => {
-                self.popup = Some(Popup::Picker(Picker {
-                    anchor: self.ctrl_anchor(),
-                    title: def.label.clone(),
-                    items: opts.iter().map(PickItem::from_opt).collect(),
-                    sel: opts
-                        .iter()
-                        .position(|o| Some(&o.value) == f.value.as_ref().or(def.default.as_ref()))
-                        .unwrap_or(0),
-                    filter: String::new(),
-                    current: Some(f.value.clone().unwrap_or(Value::Null)),
-                    target: PickTarget::Field {
-                        bind: f.bind.clone(),
-                        def: Box::new(def.clone()),
-                    },
-                }));
-            }
-            Kind::Multi(opts) => {
-                let cur: Vec<Value> = f
-                    .effective()
-                    .and_then(Value::as_array)
-                    .cloned()
-                    .unwrap_or_default();
-                self.popup = Some(Popup::Checklist(Checklist {
-                    title: def.label.clone(),
-                    checked: opts.iter().map(|o| cur.contains(&o.value)).collect(),
-                    opts: opts.clone(),
-                    sel: 0,
-                    bind: f.bind.clone(),
-                }));
-            }
-            _ if !def.presets.is_empty() => {
-                let mut items: Vec<PickItem> = def.presets.iter().map(PickItem::from_opt).collect();
-                items.push(PickItem {
-                    label: t("pick.custom"),
-                    detail: t("pick.custom.desc"),
-                    group: String::new(),
-                    value: json!(PICK_CUSTOM),
-                    enabled: true,
-                });
-                let cur = f.effective().cloned();
-                self.popup = Some(Popup::Picker(Picker {
-                    anchor: self.ctrl_anchor(),
-                    title: def.label.clone(),
-                    sel: def
-                        .presets
-                        .iter()
-                        .position(|o| Some(&o.value) == cur.as_ref())
-                        .unwrap_or(items.len() - 1),
-                    items,
-                    filter: String::new(),
-                    current: cur,
-                    target: PickTarget::Field {
-                        bind: f.bind.clone(),
-                        def: Box::new(def.clone()),
-                    },
-                }));
-            }
-            _ => self.open_field_input(&f),
+        let anchor = self.ctrl_anchor();
+        match field::activate(&f, anchor, date_hint(&f)) {
+            Activation::Set(v) => self.store.set_field(&f.bind, v, f.def.default.as_ref()),
+            Activation::Open(popup) => self.popup = Some(popup),
         }
     }
 
@@ -960,30 +902,7 @@ impl App {
     }
 
     fn open_field_input(&mut self, f: &FieldRow) {
-        let def = &f.def;
-        let mut hint = def.desc.clone();
-        if matches!(def.kind, Kind::Text | Kind::Raw) {
-            hint = format!(
-                "{hint}\n{}",
-                t(if def.kind == Kind::Raw {
-                    "input.raw_hint"
-                } else {
-                    "input.text_hint"
-                })
-            );
-        }
-        if def.preview.is_some() {
-            hint = format!("{hint}\n{}", t("input.date_hint"));
-        }
-        self.popup = Some(Popup::Input(Input::new(
-            def.label.clone(),
-            hint.trim().to_string(),
-            &form::input_text(f),
-            InputTarget::Field {
-                bind: f.bind.clone(),
-                def: Box::new(def.clone()),
-            },
-        )));
+        self.popup = Some(field::text_input(f, date_hint(f)));
     }
 
     fn run_act(&mut self, act: Act) {
@@ -1533,7 +1452,7 @@ impl App {
     fn on_picked(&mut self, target: PickTarget, value: Value) {
         match target {
             PickTarget::Field { bind, def } => {
-                if value == json!(PICK_CUSTOM) {
+                if value == json!(field::PICK_CUSTOM) {
                     let f = FieldRow::new(*def, bind, &self.store);
                     self.open_field_input(&f);
                 } else {
@@ -1567,20 +1486,17 @@ impl App {
 
     fn on_submitted(&mut self, target: InputTarget, text: String) {
         match target {
-            InputTarget::Field { bind, def } => {
-                if text.trim().is_empty() && def.kind != Kind::Bool {
+            InputTarget::Field { bind, def } => match field::parse_submitted(&def.kind, &text) {
+                Ok(None) => {
                     self.store.unset(&bind);
                     self.popup = None;
-                    return;
                 }
-                match schema::parse_input(&def.kind, &text) {
-                    Ok(v) => {
-                        self.store.set_field(&bind, v, def.default.as_ref());
-                        self.popup = None;
-                    }
-                    Err(code) => self.input_error(form::input_error(&def.kind, &code)),
+                Ok(Some(v)) => {
+                    self.store.set_field(&bind, v, def.default.as_ref());
+                    self.popup = None;
                 }
-            }
+                Err(msg) => self.input_error(msg),
+            },
             InputTarget::App(WInput::NewRawKey { entry }) => {
                 let k = text.trim().to_string();
                 if k.is_empty() || k == "id" || k.contains(char::is_whitespace) {
@@ -1729,25 +1645,8 @@ impl App {
         let Some(Row::Field(f)) = rows.get(row) else {
             return;
         };
-        if let Kind::Float {
-            min: Some(min),
-            max: Some(max),
-            step,
-        } = f.def.kind
-        {
-            let track = r.width.saturating_sub(1).max(1) as f64;
-            let frac = (x.saturating_sub(r.x) as f64 / track).clamp(0.0, 1.0);
-            let raw = min + frac * (max - min);
-            let v = if step > 0.0 {
-                (raw / step).round() * step
-            } else {
-                raw
-            };
-            let v = schema::clamp_float(&f.def.kind, v);
-            if let Some(n) = serde_json::Number::from_f64(v) {
-                self.store
-                    .set_field(&f.bind, Value::Number(n), f.def.default.as_ref());
-            }
+        if let Some(v) = field::slider_value(&f.def.kind, r, x) {
+            self.store.set_field(&f.bind, v, f.def.default.as_ref());
         }
     }
 
@@ -2109,10 +2008,12 @@ impl App {
             MenuAct::Apply => self.request_apply(),
             MenuAct::Cancel => self.request_discard(),
             MenuAct::Restore => self.request_restore(),
-            MenuAct::Help => self.popup = Some(Popup::Help {
+            MenuAct::Help => {
+                self.popup = Some(Popup::Help {
                     scroll: 0,
                     content: help_content(),
-                }),
+                })
+            }
         }
     }
 
@@ -2285,6 +2186,11 @@ fn help_content() -> HelpContent {
         ],
         footer: t("help.modes"),
     }
+}
+
+/// Ayuda extra al escribir un formato de fecha.
+fn date_hint(f: &FieldRow) -> Option<String> {
+    f.def.preview.is_some().then(|| t("input.date_hint"))
 }
 
 fn qml_template(id: &str) -> String {

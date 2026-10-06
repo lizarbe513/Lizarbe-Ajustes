@@ -71,7 +71,14 @@ impl<H: Copy + PartialEq> Ctx<'_, H> {
 // ---------------------------------------------------------------- encabezado
 
 /// Título de sección en mayúsculas, descripción y separador (3 líneas).
-pub fn section_header(f: &mut Frame, pal: &Palette, area: Rect, title: &str, desc: &str, focused: bool) {
+pub fn section_header(
+    f: &mut Frame,
+    pal: &Palette,
+    area: Rect,
+    title: &str,
+    desc: &str,
+    focused: bool,
+) {
     let x = area.x;
     let w = area.width as usize;
     put(
@@ -93,7 +100,10 @@ pub fn section_header(f: &mut Frame, pal: &Palette, area: Rect, title: &str, des
         f,
         x,
         area.y + 1,
-        vec![Span::styled(truncate(&format!(" {desc}"), w), fg(pal.muted))],
+        vec![Span::styled(
+            truncate(&format!(" {desc}"), w),
+            fg(pal.muted),
+        )],
     );
     put(
         f,
@@ -499,7 +509,18 @@ pub fn draw_form<H: CoreHit, B, A>(
                     _ => RowInfo::default(),
                 };
                 let dropdown = opts.dropdown_open && i == sel;
-                draw_item(f, ctx, area, y, i, row, i == sel && opts.focused, i == sel, &ri, dropdown)
+                draw_item(
+                    f,
+                    ctx,
+                    area,
+                    y,
+                    i,
+                    row,
+                    i == sel && opts.focused,
+                    i == sel,
+                    &ri,
+                    dropdown,
+                )
             }
         }
         y += h;
@@ -577,9 +598,7 @@ fn draw_item<H: CoreHit, B, A>(
     put(f, area.x, y + 1, l2);
 
     // Línea 3: solo en la fila del cursor, información extra.
-    if is_cursor
-        && let Some(extra) = info.extra.clone().or_else(|| desc_lines.get(1).cloned())
-    {
+    if is_cursor && let Some(extra) = info.extra.clone().or_else(|| desc_lines.get(1).cloned()) {
         put(
             f,
             area.x,
@@ -727,7 +746,10 @@ fn draw_control<H: CoreHit>(
                 tn.shadow,
                 tn.bold,
             );
-            ctx.hit(Rect::new(x, y, inner_w as u16 + 2, 3), H::ctrl(i, Sub::Main));
+            ctx.hit(
+                Rect::new(x, y, inner_w as u16 + 2, 3),
+                H::ctrl(i, Sub::Main),
+            );
         }
         Ctl::Color(c, text) => {
             let h = hov(ctx, Sub::Main);
@@ -753,7 +775,10 @@ fn draw_control<H: CoreHit>(
                 tn.shadow,
                 tn.bold,
             );
-            ctx.hit(Rect::new(x, y, inner_w as u16 + 2, 3), H::ctrl(i, Sub::Main));
+            ctx.hit(
+                Rect::new(x, y, inner_w as u16 + 2, 3),
+                H::ctrl(i, Sub::Main),
+            );
         }
     }
 }

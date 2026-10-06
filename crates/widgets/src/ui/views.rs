@@ -35,7 +35,14 @@ pub(super) fn draw_content(f: &mut Frame, app: &mut App, area: Rect) {
 
     // Encabezado: título en mayúsculas, descripción y separador.
     let (title, desc) = section_header(app);
-    view::section_header(f, &app.pal, Rect::new(x, area.y, w, 3), &title, &desc, focused);
+    view::section_header(
+        f,
+        &app.pal,
+        Rect::new(x, area.y, w, 3),
+        &title,
+        &desc,
+        focused,
+    );
 
     let body = Rect::new(x, area.y + 3, w, area.height.saturating_sub(3 + BUTTONS_H));
     match app.section {
@@ -710,7 +717,14 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         if app.advanced {
             actions.push(('e', "󰈔", t("menu.p.edit"), !p.first_party));
         }
-        draw_chips(f, app, area.x + 1, area.bottom() - 1, w.saturating_sub(1), &actions);
+        draw_chips(
+            f,
+            app,
+            area.x + 1,
+            area.bottom() - 1,
+            w.saturating_sub(1),
+            &actions,
+        );
     }
 }
 

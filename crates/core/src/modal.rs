@@ -78,7 +78,12 @@ fn draw_modal_buttons<T: PopupTypes, H: CoreHit>(
 
 // ---------------------------------------------------------------- ventanas
 
-fn draw_window<T: PopupTypes, H: CoreHit>(f: &mut Frame, ctx: &mut Ctx<H>, area: Rect, popup: &Popup<T>) {
+fn draw_window<T: PopupTypes, H: CoreHit>(
+    f: &mut Frame,
+    ctx: &mut Ctx<H>,
+    area: Rect,
+    popup: &Popup<T>,
+) {
     let w = window_width(area);
     let tw = (w as usize).saturating_sub(4);
     let has_buttons = !popup.buttons().is_empty();
@@ -208,7 +213,12 @@ fn draw_window<T: PopupTypes, H: CoreHit>(f: &mut Frame, ctx: &mut Ctx<H>, area:
     }
 }
 
-fn buttons_at<T: PopupTypes, H: CoreHit>(f: &mut Frame, ctx: &mut Ctx<H>, popup: &Popup<T>, inner: Rect) {
+fn buttons_at<T: PopupTypes, H: CoreHit>(
+    f: &mut Frame,
+    ctx: &mut Ctx<H>,
+    popup: &Popup<T>,
+    inner: Rect,
+) {
     if popup.buttons().is_empty() || inner.height < 4 {
         return;
     }
@@ -418,7 +428,12 @@ fn draw_help<T: PopupTypes, H: CoreHit>(
 // ---------------------------------------------------------------- desplegables
 
 /// Lista pegada al control que la abrió, como los `select` de Meca.
-fn draw_dropdown<T: PopupTypes, H: CoreHit>(f: &mut Frame, ctx: &mut Ctx<H>, area: Rect, p: &Picker<T>) {
+fn draw_dropdown<T: PopupTypes, H: CoreHit>(
+    f: &mut Frame,
+    ctx: &mut Ctx<H>,
+    area: Rect,
+    p: &Picker<T>,
+) {
     let Some(anchor) = p.anchor else { return };
     let vis = p.visible();
     let label_w = p.items.iter().map(|i| i.label.width()).max().unwrap_or(10);

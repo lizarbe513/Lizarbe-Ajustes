@@ -1,6 +1,6 @@
 //! Formularios de Widgets sobre los formularios genéricos del núcleo.
 
-pub use lizarbe_core::form::{FormState, NoteKind, input_error, input_text, nudge};
+pub use lizarbe_core::form::{FormState, NoteKind, nudge};
 
 use crate::store::Bind;
 

@@ -109,3 +109,29 @@ remove_legacy_meca_qs() {
   hypr_require_remove "hypr.meca-qs" "-- meca-qs (Quickshell): ventana flotante"
   menu_remove "setup.config.quickshell"
 }
+
+# install_app <binario> <carpeta del crate>: copia el binario ya compilado,
+# registra su .desktop y crea su regla de ventana flotante y centrada.
+install_app() {
+  local bin=$1 crate=$2
+  local app_id="org.omarchy.$bin"
+  mkdir -p "$BIN_DIR" "$APP_DIR" "$HYPR_DIR"
+  install -m755 "$SCRIPT_DIR/target/release/$bin" "$BIN_DIR/$bin"
+  install -m644 "$SCRIPT_DIR/crates/$crate/$bin.desktop" "$APP_DIR/$bin.desktop"
+  cat >"$HYPR_DIR/$bin.lua" <<LUA
+-- Gestionado por Lizarbe Ajustes (install.sh): ventana flotante y centrada.
+if o and o.window then
+  o.window("$app_id", { tag = "-floating-window", float = true, center = true, size = { 1120, 760 } })
+end
+LUA
+  if [[ -f $HYPR_MAIN ]] && ! grep -q "require(\"hypr.$bin\")" "$HYPR_MAIN"; then
+    printf '\n-- %s: ventana flotante\nrequire("hypr.%s")\n' "$bin" "$bin" >>"$HYPR_MAIN"
+  fi
+}
+
+# uninstall_app <binario>: lo contrario de install_app.
+uninstall_app() {
+  local bin=$1
+  rm -f "$BIN_DIR/$bin" "$APP_DIR/$bin.desktop" "$HYPR_DIR/$bin.lua"
+  hypr_require_remove "hypr.$bin" "-- $bin: ventana flotante"
+}

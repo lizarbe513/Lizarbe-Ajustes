@@ -65,7 +65,6 @@ pub type Input = core::Input<W>;
 pub type InputTarget = core::InputTarget<W>;
 pub type Picker = core::Picker<W>;
 pub type PickTarget = core::PickTarget<W>;
-pub type Checklist = core::Checklist<W>;
 pub type Menu = core::Menu<W>;
 pub type MenuItem = core::MenuItem<W>;
 pub type Outcome = core::Outcome<W>;

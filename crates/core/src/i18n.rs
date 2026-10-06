@@ -175,7 +175,11 @@ pub fn used_keys(src_dir: &Path) -> Vec<(PathBuf, String)> {
 pub fn key_mismatch(es_json: &str, en_json: &str) -> Vec<String> {
     let es = parse(es_json, "es.json");
     let en = parse(en_json, "en.json");
-    let mut missing: Vec<_> = es.keys().filter(|k| !en.contains_key(*k)).cloned().collect();
+    let mut missing: Vec<_> = es
+        .keys()
+        .filter(|k| !en.contains_key(*k))
+        .cloned()
+        .collect();
     missing.extend(en.keys().filter(|k| !es.contains_key(*k)).cloned());
     missing.sort();
     missing
@@ -211,6 +215,10 @@ mod tests {
             .collect();
         missing.sort();
         missing.dedup();
-        assert!(missing.is_empty(), "claves inexistentes:\n{}", missing.join("\n"));
+        assert!(
+            missing.is_empty(),
+            "claves inexistentes:\n{}",
+            missing.join("\n")
+        );
     }
 }
