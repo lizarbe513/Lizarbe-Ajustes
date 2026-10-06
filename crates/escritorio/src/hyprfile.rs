@@ -121,7 +121,7 @@ pub fn render(values: &Values, ctx: &RenderCtx) -> String {
     // Los ajustes `m:` viven en monitors.lua, no aquí.
     let stored: Values = values
         .iter()
-        .filter(|(k, _)| !k.starts_with("m:") && !k.starts_with("n:"))
+        .filter(|(k, _)| !k.starts_with("m:") && !k.starts_with("n:") && !k.starts_with("lg:"))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
     let meta = serde_json::to_string(&stored).unwrap_or_else(|_| "{}".into());

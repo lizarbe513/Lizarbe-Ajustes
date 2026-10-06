@@ -690,6 +690,15 @@ impl App {
             Section::Autostart => (vec![], "restore.autostart"),
             Section::Compose => (vec![], "restore.compose"),
             Section::Themes => (vec![], "restore.themes"),
+            Section::Language => (
+                self.store
+                    .values
+                    .keys()
+                    .filter(|k| k.starts_with("lg:"))
+                    .cloned()
+                    .collect(),
+                "restore.language",
+            ),
             Section::NightLight => (
                 self.store
                     .values
@@ -791,6 +800,9 @@ impl App {
                 let mut lines = vec![t("msg.rolled_back")];
                 lines.extend(report.errors);
                 self.message(t("msg.error"), lines);
+            }
+            Ok(report) if !report.warnings.is_empty() => {
+                self.message(t("msg.warning"), report.warnings)
             }
             Ok(_) if self.store.paths.sandbox => {
                 self.toast(t("msg.applied_sandbox"), NoteKind::Info)

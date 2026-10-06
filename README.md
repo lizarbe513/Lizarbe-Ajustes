@@ -6,10 +6,10 @@
 > - **Escritorio** (`lizarbe-escritorio`): Hyprland sin editar archivos. Apariencia (espacios,
 >   bordes, transparencia, desenfoque, sombras, animaciones), ventanas y escritorios, pantallas
 >   (resolución, Hz, escala, posición, giro), teclado (idioma, tecla Compose, repetición), mouse
->   y touchpad, cursor, atajos de teclado (con grabación de combinaciones), inicio automático, luz
+>   y touchpad, cursor, atajos de teclado (con grabación de combinaciones), inicio automático, idioma (sistema, menú y apps), luz
 >   nocturna, atajos de texto (`~/.XCompose`) y temas propios con editor de colores. Reemplaza a Meca HyprConfig.
 > - **Widgets** (`lizarbe-widgets`): barra, widgets, plugins y apariencia del shell
->   **Quickshell**. En el menú: `Menu → Setup → Widgets y barra`.
+>   **Quickshell**. En el menú: `Menu → Style → Widgets y barra`.
 > - `crates/core`: idioma, preferencias, tema, escritura segura, Hyprland y piezas de interfaz
 >   comunes, para que las dos apps se usen igual.
 
@@ -23,7 +23,7 @@ escribe de forma atómica y recarga Hyprland; si Hyprland informa un error, desh
 
 ```bash
 lizarbe-escritorio                        # o búscalo como "Escritorio" en el lanzador
-lizarbe-escritorio --section teclado      # apariencia, ventanas, pantallas, teclado, mouse, cursor, atajos, inicio, luz, texto, cambios
+lizarbe-escritorio --section teclado      # apariencia, ventanas, pantallas, teclado, mouse, cursor, atajos, inicio, luz, texto, idioma, cambios
 lizarbe-escritorio --config-dir /tmp/x    # probar sobre una carpeta (no recarga Hyprland)
 ```
 

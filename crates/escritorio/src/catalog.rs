@@ -24,12 +24,13 @@ pub enum Section {
     Autostart,
     NightLight,
     Compose,
+    Language,
     Themes,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 12] = [
+    pub const ALL: [Section; 13] = [
         Section::Appearance,
         Section::Windows,
         Section::Monitors,
@@ -40,6 +41,7 @@ impl Section {
         Section::Autostart,
         Section::NightLight,
         Section::Compose,
+        Section::Language,
         Section::Themes,
         Section::Changes,
     ];
@@ -62,6 +64,7 @@ impl Section {
             "inicio" | "autostart" => Section::Autostart,
             "luz" | "nightlight" | "night" => Section::NightLight,
             "texto" | "compose" | "xcompose" => Section::Compose,
+            "idioma" | "language" | "lang" => Section::Language,
             "cambios" | "changes" => Section::Changes,
             _ => return None,
         })
@@ -79,6 +82,7 @@ impl Section {
             Section::Autostart => "autostart",
             Section::NightLight => "nightlight",
             Section::Compose => "compose",
+            Section::Language => "language",
             Section::Themes => "themes",
             Section::Changes => "changes",
         }
@@ -96,6 +100,7 @@ impl Section {
             Section::Autostart => "󰐥",
             Section::NightLight => "󰖔",
             Section::Compose => "󰗊",
+            Section::Language => "",
             Section::Themes => "󰸌",
             Section::Changes => "󰄬",
         }
@@ -130,6 +135,7 @@ pub const CATEGORIES: [(&str, &[Section]); 4] = [
             Section::Autostart,
             Section::NightLight,
             Section::Compose,
+            Section::Language,
             Section::Themes,
         ],
     ),
@@ -212,6 +218,7 @@ pub fn groups(section: Section, ctx: &Ctx) -> Vec<Group> {
         Section::Cursor => cursor(ctx),
         // Listas propias: las construye la aplicación.
         Section::NightLight => nightlight(),
+        Section::Language => language(),
         Section::Keybinds
         | Section::Autostart
         | Section::Compose
@@ -794,6 +801,14 @@ fn time_choice(key: &str, times: &[&str], default: &str) -> FieldDef {
         .map(|t| Opt::new(json!(t), t.to_string()))
         .collect();
     field(key, Kind::Enum(opts), json!(default))
+}
+
+/// Idioma de Lizarbe: el de las apps, el del menú de Omarchy y el del sistema.
+fn language() -> Vec<Group> {
+    vec![Group::new(
+        "language",
+        vec![choice("lg:ui", &[json!("es"), json!("en")], json!("es"))],
+    )]
 }
 
 fn nightlight() -> Vec<Group> {

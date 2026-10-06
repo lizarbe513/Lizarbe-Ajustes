@@ -575,5 +575,17 @@
   "th.c.bright_yellow": "Amarillo brillante",
   "th.c.bright_yellow.d": "Versión brillante del amarillo.",
   "th.c.bright_green": "Verde brillante",
-  "th.c.bright_green.d": "Versión brillante del verde."
+  "th.c.bright_green.d": "Versión brillante del verde.",
+  "sec.language": "Idioma",
+  "sec.language.d": "Elige el idioma del equipo: las apps de Lizarbe, el menú de Omarchy y el sistema (fechas y aplicaciones).",
+  "g.language": "Idioma del equipo",
+  "o.lg:ui": "Idioma",
+  "o.lg:ui.d": "Se aplica a Escritorio, Widgets y al menú. El del sistema cambia al volver a iniciar sesión. La barra y los widgets de Omarchy se quedan en inglés.",
+  "o.lg:ui=es": "Español (España)",
+  "o.lg:ui=en": "English (US)",
+  "restore.language": "Restaurar el idioma",
+  "restore.language.desc": "Se deshace el cambio de idioma sin aplicar.",
+  "lang.err_menu": "No se pudo traducir el menú de Omarchy (lizarbe-menu-sync). Ejecuta lizarbe-doctor --fix.",
+  "lang.err_system": "No se pudo cambiar el idioma del sistema (se pide la contraseña para hacerlo). El menú y las apps sí cambiaron.",
+  "msg.warning": "Se aplicó con avisos"
 }

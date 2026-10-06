@@ -47,6 +47,8 @@ pub struct ApplyReport {
     pub reloaded: bool,
     /// Errores de Hyprland; si hay, los archivos se devolvieron a su estado.
     pub errors: Vec<String>,
+    /// Avisos de lo que no se pudo hacer, sin deshacer nada (idioma del menú o del sistema).
+    pub warnings: Vec<String>,
 }
 
 pub struct Store {
@@ -269,6 +271,7 @@ impl Store {
                         .any(|e| e.cmd == "hyprsunset" && e.enabled)
                 ));
             }
+            "lg:ui" => return Some(json!(lizarbe_core::i18n::lang().code())),
             "n:start" => return Some(json!(self.night.start)),
             "n:end" => return Some(json!(self.night.end)),
             "n:temp" => return Some(json!(self.night.temp)),
@@ -632,6 +635,11 @@ impl Store {
                 tx.write(&monitors, &text)?;
             }
         }
+        let language = self
+            .values
+            .get("lg:ui")
+            .and_then(Value::as_str)
+            .map(String::from);
         if self.live && !self.paths.sandbox {
             if let Err(errors) = hypr::reload_checked() {
                 tx.rollback()?;
@@ -655,6 +663,11 @@ impl Store {
             }
         }
         self.theme_edits.clear();
+        if let Some(code) = language
+            && !self.paths.sandbox
+        {
+            report.warnings.extend(apply_language(&code));
+        }
         if compose_changed && !self.paths.sandbox {
             let _ = ipc::run("omarchy-restart-xcompose", &[]);
         }
@@ -662,6 +675,33 @@ impl Store {
         self.reload();
         Ok(report)
     }
+}
+
+/// Idioma de Lizarbe: lo guarda para las apps (Escritorio y Widgets), traduce el
+/// menú de Omarchy y cambia el idioma del sistema (`localectl`, aplica al volver
+/// a iniciar sesión). Devuelve los avisos de lo que no se pudo.
+fn apply_language(code: &str) -> Vec<String> {
+    use lizarbe_core::i18n::{Lang, set_lang};
+    let Some(lang) = Lang::parse(code) else {
+        return vec![];
+    };
+    let mut prefs = lizarbe_core::prefs::Prefs::load();
+    prefs.lang = lang.code().to_string();
+    prefs.save();
+    set_lang(lang);
+    let mut errors = vec![];
+    if ipc::run("lizarbe-menu-sync", &["--quiet", "--lang", code]).is_err() {
+        errors.push(crate::i18n::t("lang.err_menu"));
+    }
+    let locale = if code == "es" {
+        "es_ES.UTF-8"
+    } else {
+        "en_US.UTF-8"
+    };
+    if ipc::run("localectl", &["set-locale", &format!("LANG={locale}")]).is_err() {
+        errors.push(crate::i18n::t("lang.err_system"));
+    }
+    errors
 }
 
 /// El tema del cursor cambia al momento en Hyprland y en las aplicaciones GTK.
@@ -802,6 +842,15 @@ impl FieldStore<Bind> for Store {
             }
             return;
         }
+        if bind.0 == "lg:ui" {
+            // Pendiente solo si difiere del idioma que se usa ahora.
+            if value.as_str() == Some(lizarbe_core::i18n::lang().code()) {
+                self.values.remove(&bind.0);
+            } else {
+                self.values.insert(bind.0.clone(), value);
+            }
+            return;
+        }
         if Some(&value) == default {
             self.values.remove(&bind.0);
         } else {
@@ -868,6 +917,22 @@ mod tests {
         assert!(s.dirty());
         s.set_field(&b, json!(5), Some(&json!(5)));
         assert!(!s.dirty(), "volver al valor de Omarchy no guarda nada");
+    }
+
+    #[test]
+    fn language_is_not_written_to_the_lua_file() {
+        let (_t, mut s) = sandbox();
+        let other = if lizarbe_core::i18n::lang().code() == "es" {
+            "en"
+        } else {
+            "es"
+        };
+        let def = catalog::find("lg:ui", &Ctx::default()).unwrap();
+        s.set_field(&Bind("lg:ui".into()), json!(other), def.default.as_ref());
+        assert!(s.dirty(), "el cambio de idioma queda pendiente");
+        s.apply().unwrap();
+        let lua = std::fs::read_to_string(s.paths.escritorio_lua()).unwrap_or_default();
+        assert!(!lua.contains("lg:ui"), "{lua}");
     }
 
     #[test]
