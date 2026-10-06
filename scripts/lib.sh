@@ -145,7 +145,7 @@ menu_set() {
 # Entradas del menú de Omarchy que abren Escritorio. Las que reutilizan un id
 # nativo (style.hyprland, setup.monitors…) reemplazan al editor de texto; las
 # demás son nuevas.
-ESCRITORIO_MENU_KEYS=(style.hyprland setup.monitors setup.keybindings setup.input setup.nightlight setup.compose setup.escritorio setup.config.looknfeel setup.config.monitors setup.config.bindings setup.config.input)
+ESCRITORIO_MENU_KEYS=(setup.plugin style.hyprland setup.monitors setup.keybindings setup.input setup.nightlight setup.compose setup.escritorio setup.config.looknfeel setup.config.monitors setup.config.bindings setup.config.input)
 
 escritorio_entry() { # clave icono etiqueta sección
   local sec=""
@@ -158,7 +158,19 @@ editor_entry() { # clave icono etiqueta archivo
   printf '  "%s": {\n    "icon": "%s",\n    "label": "%s",\n    "when": "[[ -f ~/.config/hypr/%s ]]",\n    "action": "omarchy-launch-config-editor \\"$HOME/.config/hypr/%s\\""\n  }' "$1" "$2" "$3" "$4" "$4"
 }
 
+# Plugins: el id nativo (un submenú de 5 pasos) pasa a abrir Widgets en su
+# sección de plugins, que ya trae añadir, clonar, actualizar y quitar.
+menu_install_plugins() {
+  menu_set setup.plugin '  "setup.plugin": {
+    "icon": "󰐱",
+    "label": "Plugins",
+    "aliases": ["plugin", "plugins"],
+    "action": "omarchy-launch-tui --app-id=org.omarchy.lizarbe-widgets lizarbe-widgets --section plugins"
+  }'
+}
+
 menu_install_escritorio() {
+  menu_install_plugins
   menu_set setup.config.looknfeel "$(editor_entry setup.config.looknfeel "" "Apariencia (looknfeel.lua)" looknfeel.lua)"
   menu_set setup.config.monitors "$(editor_entry setup.config.monitors "󰍹" "Pantallas (monitors.lua)" monitors.lua)"
   menu_set setup.config.bindings "$(editor_entry setup.config.bindings "" "Atajos (bindings.lua)" bindings.lua)"

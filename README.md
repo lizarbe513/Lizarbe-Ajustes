@@ -7,7 +7,7 @@
 >   bordes, transparencia, desenfoque, sombras, animaciones), ventanas y escritorios, pantallas
 >   (resolución, Hz, escala, posición, giro), teclado (idioma, tecla Compose, repetición), mouse
 >   y touchpad, cursor, atajos de teclado (con grabación de combinaciones), inicio automático, luz
->   nocturna y atajos de texto (`~/.XCompose`). *En desarrollo:* reemplazará a Meca HyprConfig.
+>   nocturna, atajos de texto (`~/.XCompose`) y temas propios con editor de colores. Reemplaza a Meca HyprConfig.
 > - **Widgets** (`lizarbe-widgets`): barra, widgets, plugins y apariencia del shell
 >   **Quickshell**. En el menú: `Menu → Setup → Widgets y barra`.
 > - `crates/core`: idioma, preferencias, tema, escritura segura, Hyprland y piezas de interfaz
@@ -35,8 +35,10 @@ El **tamaño de la interfaz** se guarda en `monitors.lua`, igual que el atajo de
 para que los dos sigan funcionando juntos. La **tecla Compose** reemplaza los distintos «arreglos de
 Bloq Mayús»: elige qué tecla hace de Compose (o ninguna) y el resto de opciones del teclado no se toca.
 
-Mientras Meca HyprConfig siga activo (carga `hyprland-gui.lua` al final), sus valores pisan a
-los de Escritorio; la app lo avisa.
+Si quedan ajustes de Meca HyprConfig (`hyprland-gui.lua`, que se carga al final y pisa a Escritorio),
+la app ofrece **importarlos** (también con `lizarbe-escritorio --migrate-meca`): guarda solo lo que
+difiere de Omarchy, hace copia de seguridad, comprueba el resultado con Hyprland y deshace todo si falla.
+`install.sh` retira Meca del menú, de `~/.local/bin` y de los hooks.
 
 *[English below](#english)*
 

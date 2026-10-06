@@ -650,7 +650,7 @@ impl Store {
         if !self.paths.sandbox {
             // Si se editó el tema en uso, se vuelve a aplicar para verlo.
             let current = self.paths.current_theme();
-            if applied_themes.iter().any(|s| *s == current) {
+            if applied_themes.contains(&current) {
                 let _ = ipc::run("omarchy-theme-set", &[&current]);
             }
         }
