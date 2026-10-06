@@ -26,6 +26,7 @@ ok "Hecho"
 
 step "[2/4] Instalando Escritorio y Widgets…"
 remove_legacy_meca_qs
+remove_legacy_meca
 install_app lizarbe-escritorio escritorio
 install_app lizarbe-widgets widgets
 command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" &>/dev/null || true

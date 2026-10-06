@@ -8,6 +8,7 @@ mod binds;
 mod catalog;
 mod hyprfile;
 mod i18n;
+mod migrate;
 mod paths;
 mod record;
 mod store;
@@ -32,16 +33,18 @@ struct Args {
     config_dir: Option<PathBuf>,
     advanced: Option<bool>,
     section: Option<Section>,
+    migrate: bool,
 }
 
 fn usage() -> String {
     format!(
-        "{BIN} {}\n\n{}\n\n  --section <id>        {}\n  --lang <es|en>        {}\n  --config-dir <dir>    {}\n  --advanced            {}\n  --simple              {}\n  -h, --help\n  -V, --version\n",
+        "{BIN} {}\n\n{}\n\n  --section <id>        {}\n  --lang <es|en>        {}\n  --config-dir <dir>    {}\n  --migrate-meca        {}\n  --advanced            {}\n  --simple              {}\n  -h, --help\n  -V, --version\n",
         env!("CARGO_PKG_VERSION"),
         t("cli.about"),
         t("cli.section"),
         t("cli.lang"),
         t("cli.config_dir"),
+        t("cli.migrate"),
         t("cli.advanced"),
         t("cli.simple"),
     )
@@ -53,6 +56,7 @@ fn parse_args() -> Result<Args, String> {
         config_dir: None,
         advanced: None,
         section: None,
+        migrate: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -71,6 +75,7 @@ fn parse_args() -> Result<Args, String> {
             "--config-dir" => {
                 args.config_dir = Some(PathBuf::from(it.next().ok_or("--config-dir <dir>")?));
             }
+            "--migrate-meca" => args.migrate = true,
             "--advanced" => args.advanced = Some(true),
             "--simple" => args.advanced = Some(false),
             "-h" | "--help" => {
@@ -110,8 +115,24 @@ fn main() -> Result<()> {
         std::process::exit(2);
     }
 
-    let store = Store::load(Paths::detect(args.config_dir));
+    let mut store = Store::load(Paths::detect(args.config_dir));
+    if args.migrate {
+        if !store.meca_pending() {
+            println!("{}", t("mig.nothing"));
+            return Ok(());
+        }
+        let r = store.migrate_meca()?;
+        println!(
+            "{}",
+            i18n::tf(
+                "mig.done",
+                &[("n", &r.settings.to_string()), ("b", &r.binds.to_string())]
+            )
+        );
+        return Ok(());
+    }
     let mut app = App::new(store, prefs);
+    app.offer_migration();
     if let Some(s) = args.section {
         app.go_section(s);
     }

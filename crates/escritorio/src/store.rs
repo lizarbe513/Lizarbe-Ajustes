@@ -23,6 +23,7 @@ use crate::autostart;
 use crate::binds;
 use crate::catalog::{self, Ctx, mode_value, monitor_key};
 use crate::hyprfile::{self, CustomBind, RenderCtx, Values};
+use crate::migrate;
 use crate::paths::Paths;
 use crate::sunset::{self, Night};
 use crate::xcompose;
@@ -83,6 +84,13 @@ pub struct Store {
 
 fn read(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
+}
+
+/// Resultado de importar los ajustes de Meca.
+#[derive(Debug, Default)]
+pub struct MigrateReport {
+    pub settings: usize,
+    pub binds: usize,
 }
 
 /// Parte de `input:kb_options` que edita una clave `kbopt:`.
@@ -292,6 +300,72 @@ impl Store {
         self.base(&catalog::kb_options())
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_default()
+    }
+
+    /// Hay ajustes de Meca (`hyprland-gui.lua`) que importar.
+    pub fn meca_pending(&self) -> bool {
+        self.paths.gui_lua().is_file()
+    }
+
+    /// Importa lo que Meca tenía guardado, lo aplica y retira
+    /// `hyprland-gui.lua` (con copia de seguridad) para que deje de pisar a
+    /// Escritorio. Si Hyprland rechaza el resultado, todo vuelve a como estaba.
+    pub fn migrate_meca(&mut self) -> Result<MigrateReport> {
+        let gui = read(&self.paths.gui_lua()).unwrap_or_default();
+        let mut report = MigrateReport::default();
+        let imported = migrate::settings_from_gui(&gui);
+        report.settings = imported.len();
+        for (k, v) in imported {
+            self.values.entry(k).or_insert(v);
+        }
+        let bindings_text = read(&self.paths.bindings_lua()).unwrap_or_default();
+        let binds = migrate::parse_binds(&bindings_text);
+        let mut custom = self.custom_binds();
+        for c in &binds.custom {
+            if !custom.iter().any(|x| x.keys == c.keys) {
+                custom.push(c.clone());
+                report.binds += 1;
+            }
+        }
+        self.set_custom_binds(&custom);
+        for (orig, new) in &binds.overrides {
+            let v = new.as_ref().map_or(Value::Null, |k| json!(k));
+            self.values.entry(format!("x:bind:{orig}")).or_insert(v);
+            report.binds += 1;
+        }
+
+        // 1) Escritorio guarda lo importado (Meca sigue cargado: sin cambios visibles).
+        let r = self.apply()?;
+        if !r.errors.is_empty() {
+            anyhow::bail!(r.errors.join("\n"));
+        }
+
+        // 2) Se retira Meca de la carga y de bindings.lua.
+        let mut tx = Transaction::new(&self.paths.backup_dir);
+        let main = self.paths.hyprland_lua();
+        if let Some(text) = read(&main) {
+            tx.write(&main, &migrate::without_gui_require(&text))?;
+        }
+        if !binds.custom.is_empty() || bindings_text.contains("MECA_KEYBINDS_META") {
+            tx.write(
+                &self.paths.bindings_lua(),
+                &migrate::clean_bindings(&bindings_text, &binds),
+            )?;
+        }
+        if self.live
+            && !self.paths.sandbox
+            && let Err(errors) = hypr::reload_checked()
+        {
+            tx.rollback()?;
+            let _ = hypr::reload();
+            anyhow::bail!(errors.join("\n"));
+        }
+        tx.commit(30);
+        let stamp = lizarbe_core::fsutil::stamp();
+        lizarbe_core::fsutil::backup(&self.paths.gui_lua(), &self.paths.backup_dir, &stamp)?;
+        std::fs::remove_file(self.paths.gui_lua())?;
+        self.reload();
+        Ok(report)
     }
 
     /// `monitors.lua` todavía tiene la escala general de Omarchy.

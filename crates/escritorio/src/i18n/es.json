@@ -489,5 +489,11 @@
   "o.n:end=06:00": "06:00",
   "o.n:end=07:00": "07:00",
   "o.n:end=08:00": "08:00",
-  "o.n:end=09:00": "09:00"
+  "o.n:end=09:00": "09:00",
+  "mig.title": "Importar tus ajustes de Meca",
+  "mig.body": "Meca HyprConfig sigue guardando ajustes que pisan a los de Escritorio.\nEscritorio puede importar lo que cambiaste (y tus atajos), guardar una copia de seguridad y dejar de cargar el archivo de Meca. Después no verás cambios en tu escritorio.\n¿Importar ahora?",
+  "mig.done": "Importado: {n} ajustes y {b} atajos. Meca ya no pisa a Escritorio.",
+  "mig.failed": "No se pudo importar; no se cambió nada:",
+  "mig.nothing": "No hay ajustes de Meca que importar.",
+  "cli.migrate": "importar los ajustes de Meca y retirarlos"
 }

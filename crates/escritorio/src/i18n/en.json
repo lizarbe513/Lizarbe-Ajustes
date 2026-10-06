@@ -489,5 +489,11 @@
   "o.n:end=06:00": "06:00",
   "o.n:end=07:00": "07:00",
   "o.n:end=08:00": "08:00",
-  "o.n:end=09:00": "09:00"
+  "o.n:end=09:00": "09:00",
+  "mig.title": "Import your Meca settings",
+  "mig.body": "Meca HyprConfig still stores settings that override Desktop's.\nDesktop can import what you changed (and your shortcuts), keep a backup and stop loading Meca's file. You won't see any change on your desktop afterwards.\nImport now?",
+  "mig.done": "Imported: {n} settings and {b} shortcuts. Meca no longer overrides Desktop.",
+  "mig.failed": "Could not import; nothing was changed:",
+  "mig.nothing": "There are no Meca settings to import.",
+  "cli.migrate": "import Meca settings and retire them"
 }

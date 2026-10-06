@@ -53,6 +53,11 @@ impl Paths {
         self.hypr_dir.join("monitors.lua")
     }
 
+    /// Archivo que generaba Meca HyprConfig.
+    pub fn gui_lua(&self) -> PathBuf {
+        self.hypr_dir.join("hyprland-gui.lua")
+    }
+
     pub fn bindings_lua(&self) -> PathBuf {
         self.hypr_dir.join("bindings.lua")
     }

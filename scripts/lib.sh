@@ -21,7 +21,7 @@ menu_add() {
   fi
   grep -q "\"$key\"" "$MENU_EXT" && return
   cp "$MENU_EXT" "$MENU_EXT.bak.$(date +%s)"
-  awk -v entry="$entry" '
+  ENTRY="$entry" awk '
     { lines[NR] = $0 }
     END {
       last = 0
@@ -41,7 +41,7 @@ menu_add() {
         if (i == last) {
           sub(/}[[:space:]]*$/, "", lines[i])
           if (lines[i] !~ /^[[:space:]]*$/) print lines[i]
-          print entry
+          print ENVIRON["ENTRY"]
           print "}"
         } else {
           print lines[i]
@@ -145,7 +145,7 @@ menu_set() {
 # Entradas del menú de Omarchy que abren Escritorio. Las que reutilizan un id
 # nativo (style.hyprland, setup.monitors…) reemplazan al editor de texto; las
 # demás son nuevas.
-ESCRITORIO_MENU_KEYS=(style.hyprland setup.monitors setup.keybindings setup.input setup.nightlight setup.compose setup.escritorio)
+ESCRITORIO_MENU_KEYS=(style.hyprland setup.monitors setup.keybindings setup.input setup.nightlight setup.compose setup.escritorio setup.config.looknfeel setup.config.monitors setup.config.bindings setup.config.input)
 
 escritorio_entry() { # clave icono etiqueta sección
   local sec=""
@@ -153,7 +153,16 @@ escritorio_entry() { # clave icono etiqueta sección
   printf '  "%s": {\n    "icon": "%s",\n    "label": "%s",\n    "action": "omarchy-launch-tui --app-id=org.omarchy.lizarbe-escritorio lizarbe-escritorio%s"\n  }' "$1" "$2" "$3" "$sec"
 }
 
+# Editor de texto de un archivo de Hyprland, para quien lo prefiera (Config).
+editor_entry() { # clave icono etiqueta archivo
+  printf '  "%s": {\n    "icon": "%s",\n    "label": "%s",\n    "when": "[[ -f ~/.config/hypr/%s ]]",\n    "action": "omarchy-launch-config-editor \\"$HOME/.config/hypr/%s\\""\n  }' "$1" "$2" "$3" "$4" "$4"
+}
+
 menu_install_escritorio() {
+  menu_set setup.config.looknfeel "$(editor_entry setup.config.looknfeel "" "Apariencia (looknfeel.lua)" looknfeel.lua)"
+  menu_set setup.config.monitors "$(editor_entry setup.config.monitors "󰍹" "Pantallas (monitors.lua)" monitors.lua)"
+  menu_set setup.config.bindings "$(editor_entry setup.config.bindings "" "Atajos (bindings.lua)" bindings.lua)"
+  menu_set setup.config.input "$(editor_entry setup.config.input "" "Teclado y mouse (input.lua)" input.lua)"
   menu_set style.hyprland "$(escritorio_entry style.hyprland "" "Apariencia de ventanas" apariencia)"
   menu_set setup.monitors "$(escritorio_entry setup.monitors "󰍹" "Pantallas" pantallas)"
   menu_set setup.keybindings "$(escritorio_entry setup.keybindings "" "Atajos de teclado" atajos)"
@@ -166,4 +175,12 @@ menu_install_escritorio() {
 menu_remove_escritorio() {
   local k
   for k in "${ESCRITORIO_MENU_KEYS[@]}"; do menu_remove "$k"; done
+}
+
+# Meca HyprConfig lo reemplaza Escritorio: se retiran su entrada del menú,
+# sus enlaces y su hook (el repositorio de Meca no se toca).
+remove_legacy_meca() {
+  menu_remove "setup.config.meca"
+  rm -f "$BIN_DIR/meca" "$BIN_DIR/meca-hyprconfig" "$APP_DIR/meca.desktop" \
+    "$HOME/.config/omarchy/hooks/post-update.d/99-meca-hyprconfig.sh"
 }

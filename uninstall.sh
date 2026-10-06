@@ -13,6 +13,7 @@ uninstall_app lizarbe-widgets
 menu_remove "setup.widgets"
 menu_remove_escritorio
 remove_legacy_meca_qs
+remove_legacy_meca
 
 menu_refresh
 hypr_reload

@@ -147,6 +147,8 @@ pub enum Confirm {
         keys: String,
     },
     RestoreAutostart,
+    /// Importar los ajustes de Meca y retirarlo.
+    MigrateMeca,
 }
 
 /// Cuadros de texto propios de Escritorio.
@@ -290,6 +292,17 @@ impl App {
         if self.popup.is_none() && !self.store.dirty() && self.store.external_change() {
             self.store.reload();
             self.toast(t("msg.reloaded_external"), NoteKind::Info);
+        }
+    }
+
+    /// Ofrece importar los ajustes de Meca si siguen en uso.
+    pub fn offer_migration(&mut self) {
+        if self.store.meca_pending() {
+            self.popup = Some(Popup::Confirm {
+                title: t("mig.title"),
+                lines: t("mig.body").split('\n').map(String::from).collect(),
+                action: Confirm::MigrateMeca,
+            });
         }
     }
 
@@ -779,6 +792,16 @@ impl App {
                     }
                     Confirm::Quit => self.quit = true,
                     Confirm::BindAssign { target, keys } => self.assign(target, keys),
+                    Confirm::MigrateMeca => match self.store.migrate_meca() {
+                        Ok(r) => self.toast(
+                            tf(
+                                "mig.done",
+                                &[("n", &r.settings.to_string()), ("b", &r.binds.to_string())],
+                            ),
+                            NoteKind::Info,
+                        ),
+                        Err(e) => self.message(t("mig.failed"), vec![format!("{e:#}")]),
+                    },
                     Confirm::RestoreAutostart => {
                         if self.section == Section::Compose {
                             self.store.discard_compose();
