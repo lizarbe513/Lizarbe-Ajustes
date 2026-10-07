@@ -1,9 +1,10 @@
 # Reglas generales del desarrollo del proyecto:
 - El proyecto se desarrollara sobre una interfaz TUI.
 - El proyecto es un workspace de Rust con las TUIs de configuracion Lizarbe integradas al sistema Omarchy:
-  - `crates/core`: nucleo compartido (idioma, preferencias, tema, escritura segura, Hyprland, dibujo).
+  - `crates/core`: nucleo compartido (idioma, preferencias, argumentos, rutas, tema, escritura segura, Hyprland, dibujo, raton, busqueda).
+  - `crates/escritorio`: configuracion de Hyprland (`lizarbe-escritorio`), reemplazo de Meca.
   - `crates/widgets`: panel de configuracion de la barra, widgets y plugins Quickshell (`lizarbe-widgets`).
-  - `crates/escritorio`: configuracion de Hyprland, port de Meca (`lizarbe-escritorio`, en desarrollo).
+  - `crates/temas`: Estudio de temas, crea y edita temas completos de Omarchy (`lizarbe-temas`).
 - Lo que sirva a mas de una app va en `crates/core`; lo especifico de cada app, en su crate.
 
 # Herramientas de desarrollo:

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Instalador de Lizarbe Ajustes para Omarchy: Escritorio y Widgets
+# Instalador de Lizarbe Ajustes para Omarchy: Escritorio, Widgets y Estudio de temas
 #
 #  - Compila los binarios (cargo build --release) y los copia a ~/.local/bin
-#  - Registra las aplicaciones "Escritorio" y "Widgets" en el lanzador
+#  - Registra "Escritorio", "Widgets" y "Crear tema" en el lanzador
 #  - Llama a lizarbe-doctor (paquete lizarbe-menu) para el menú y las ventanas
 #
 # Solo para desarrollo: los usuarios la reciben con el paquete lizarbe-ajustes.
@@ -20,12 +20,13 @@ if ! command -v cargo &>/dev/null; then
   echo "Necesitas Rust (cargo). Instálalo con: omarchy pkg add rust" >&2
   exit 1
 fi
-cargo build --release --manifest-path "$SCRIPT_DIR/Cargo.toml" -p lizarbe-widgets -p lizarbe-escritorio
+cargo build --release --manifest-path "$SCRIPT_DIR/Cargo.toml" -p lizarbe-widgets -p lizarbe-escritorio -p lizarbe-temas
 ok "Hecho"
 
-step "[2/3] Instalando Escritorio y Widgets…"
+step "[2/3] Instalando Escritorio, Widgets y Estudio de temas…"
 install_app lizarbe-escritorio escritorio
 install_app lizarbe-widgets widgets
+install_app lizarbe-temas temas
 command -v update-desktop-database &>/dev/null && update-desktop-database "$APP_DIR" &>/dev/null || true
 ok "Binarios en $BIN_DIR"
 
@@ -35,4 +36,4 @@ ok "Hecho"
 
 echo
 echo -e "\033[32m✔ Lizarbe Ajustes instalado.\033[0m"
-echo "  Menú → Setup y Style, o: lizarbe-escritorio / lizarbe-widgets"
+echo "  Menú → Configuración y Apariencia, o: lizarbe-escritorio / lizarbe-widgets / lizarbe-temas"

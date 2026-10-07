@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-use crate::color::{from_hsl, parse_hex, to_hex, to_hsl};
+use crate::color::{parse_hex, to_hex};
 use crate::fsutil::write_atomic;
 
 /// Colores que tiene `colors.toml`, en el orden en que se muestran.
@@ -108,10 +108,6 @@ impl Dirs {
             .iter()
             .map(|d| d.join(slug))
             .find(|p| p.is_dir())
-    }
-
-    pub fn colors_file(&self, slug: &str) -> PathBuf {
-        self.user.join(slug).join("colors.toml")
     }
 
     pub fn is_user(&self, slug: &str) -> bool {
@@ -745,16 +741,6 @@ pub fn vscode_schemes(dirs: &Dirs) -> Vec<(String, String)> {
         }
     }
     out
-}
-
-/// Tono de un color hex (0..360), para sugerir el icono Yaru más parecido.
-pub fn hue_of(hex: &str) -> Option<f32> {
-    parse_hex(hex).map(|c| to_hsl(c).0)
-}
-
-/// Color hex con otro matiz (tono/saturación/luminosidad nuevos).
-pub fn hex_from_hsl(h: f32, s: f32, l: f32) -> String {
-    to_hex(from_hsl(h, s, l))
 }
 
 #[cfg(test)]

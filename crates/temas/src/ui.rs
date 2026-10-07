@@ -8,7 +8,7 @@ use lizarbe_core::ui::{
 use lizarbe_core::view::{self, ButtonSpec, Ctx, FormOpts, RowInfo};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Modifier;
 use ratatui::text::Span;
 use unicode_width::UnicodeWidthStr;
 
@@ -633,7 +633,7 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
             };
             format!("{icon} {}", toast.text)
         }
-        None => String::new(),
+        None => app.hover_hint().unwrap_or_default(),
     };
     status_bar(
         f,
@@ -643,7 +643,6 @@ fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
         app.toast.is_some(),
         &footer_hints(app),
     );
-    let _ = Style::new();
 }
 
 #[cfg(test)]

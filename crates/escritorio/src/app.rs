@@ -8,19 +8,21 @@ use std::cell::OnceCell;
 use std::time::{Duration, Instant};
 
 use lizarbe_core::field::{self, Activation};
+use lizarbe_core::flow;
 use lizarbe_core::form::{FieldStore, FormState, NoteKind, nudge};
+use lizarbe_core::hints;
+use lizarbe_core::mouse::{self, Mouse};
 use lizarbe_core::popup::{self as cp, HelpContent, PickTarget, PopupTypes};
 use lizarbe_core::prefs::Prefs;
 use lizarbe_core::schema::{Kind, value_label};
+use lizarbe_core::search;
 use lizarbe_core::term::{Command, TuiApp};
 use lizarbe_core::theme::Palette;
-use lizarbe_core::view::CoreHit;
+use lizarbe_core::view::CoreHit as _;
 pub use lizarbe_core::view::Sub;
 use ratatui::Frame;
-use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
-use ratatui::layout::{Position, Rect};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use ratatui::layout::Rect;
 use serde_json::Value;
 
 use crate::apps::App as DesktopApp;
@@ -86,50 +88,12 @@ pub enum Hit {
     Search,
 }
 
-impl CoreHit for Hit {
-    fn row(i: usize) -> Self {
-        Hit::Row(i)
-    }
-    fn ctrl(i: usize, sub: Sub) -> Self {
-        Hit::Ctrl(i, sub)
-    }
-    fn button(i: usize) -> Self {
-        Hit::Button(i)
-    }
-    fn sidebar(i: usize) -> Self {
-        Hit::Sidebar(i)
-    }
-    fn close() -> Self {
-        Hit::Close
-    }
-    fn back() -> Self {
-        Hit::Back
-    }
-    fn search() -> Self {
-        Hit::Search
-    }
-    fn mode_toggle() -> Self {
-        Hit::ModeToggle
-    }
-    fn lang_toggle() -> Self {
-        Hit::LangToggle
-    }
-    fn popup_item(i: usize) -> Self {
-        Hit::PopupItem(i)
-    }
-    fn modal_button(i: usize) -> Self {
-        Hit::ModalButton(i)
-    }
-    fn menu_item(i: usize) -> Self {
-        Hit::MenuItem(i)
-    }
-    fn row_index(&self) -> Option<usize> {
-        match self {
-            Hit::Row(i) | Hit::Ctrl(i, _) => Some(*i),
-            _ => None,
-        }
-    }
-}
+lizarbe_core::core_hit!(Hit {
+    sidebar: Sidebar,
+    search: Search,
+    mode: Hit::ModeToggle,
+    lang: Hit::LangToggle,
+});
 
 /// Acciones de filas tipo botón.
 #[derive(Debug, Clone, PartialEq)]
@@ -259,7 +223,7 @@ pub struct App {
     apps: OnceCell<Vec<DesktopApp>>,
     last_check: Instant,
     palette_watch: lizarbe_core::theme::PaletteWatcher,
-    last_click: Option<(Instant, Hit)>,
+    clicks: mouse::Clicks<Hit>,
 }
 
 impl App {
@@ -283,7 +247,7 @@ impl App {
             recording: None,
             apps: OnceCell::new(),
             last_check: Instant::now(),
-            last_click: None,
+            clicks: mouse::Clicks::default(),
         }
     }
 
@@ -589,62 +553,30 @@ impl App {
     }
 
     /// Todas las opciones que se pueden buscar, tal como se ven ahora.
-    pub fn search_entries(&self) -> Vec<lizarbe_core::search::Entry> {
-        use lizarbe_core::search::Entry;
+    /// Todas las opciones que se pueden buscar, tal como se ven ahora: las
+    /// secciones y las filas de las secciones de ajustes (las listas propias,
+    /// como los atajos, tienen su propio buscador).
+    pub fn search_entries(&self) -> Vec<search::Entry> {
         let mut out = vec![];
         for (si, s) in Section::ALL.iter().enumerate() {
-            out.push(Entry {
-                section: si,
-                section_title: s.title(),
-                group: String::new(),
-                key: String::new(),
-                label: s.title(),
-                // Sin descripción: así una búsqueda de palabras sueltas
-                // encuentra la opción y no la sección que la contiene.
-                desc: String::new(),
-            });
-            if *s == Section::Screenshots {
-                out.push(Entry {
-                    section: si,
-                    section_title: s.title(),
-                    group: t("g.cap_keys"),
-                    key: "cap:shortcut".into(),
-                    label: t("cap.shortcut.label"),
-                    desc: t("cap.shortcut.d"),
-                });
-            }
-            for g in groups(*s, &self.store.ctx) {
-                for def in g.fields {
-                    if (def.advanced && !self.advanced)
-                        || (def.key == "m:scale" && !self.store.global_scale_editable())
-                    {
-                        continue;
-                    }
-                    out.push(Entry {
-                        section: si,
-                        section_title: s.title(),
-                        group: g.title.clone(),
-                        key: def.key.clone(),
-                        label: def.label.clone(),
-                        desc: def.desc.clone(),
-                    });
-                }
-            }
+            let title = s.title();
+            out.push(search::section_entry(si, &title));
+            let rows = match s {
+                Section::Screenshots => self.capture_rows(),
+                s if !groups(*s, &self.store.ctx).is_empty() => self.settings_rows(*s),
+                _ => continue,
+            };
+            out.extend(search::entries_from_rows(si, &title, &rows));
         }
         out
     }
 
     pub fn open_search(&mut self) {
-        let items = lizarbe_core::search::pick_items(&self.search_entries());
-        self.popup = Some(Popup::Picker(cp::Picker {
-            title: t("search.title"),
-            items,
-            sel: 0,
-            filter: String::new(),
-            target: PickTarget::App(EPick::Search),
-            current: None,
-            anchor: None,
-        }));
+        let target = PickTarget::App(EPick::Search);
+        self.popup = Some(Popup::Picker(search::picker(
+            &self.search_entries(),
+            target,
+        )));
     }
 
     /// Salta a la sección y a la fila de la opción buscada.
@@ -653,15 +585,7 @@ impl App {
             return;
         };
         self.go_section(*s);
-        if key.is_empty() {
-            return;
-        }
-        let rows = self.rows();
-        if let Some(i) = rows.iter().position(|r| match r {
-            Row::Field(f) => f.def.key == key,
-            Row::Action(_, Act::CapShortcut) => key == "cap:shortcut",
-            _ => false,
-        }) {
+        if let Some(i) = search::row_of(key) {
             self.form_state().sel = i;
         }
     }
@@ -867,11 +791,7 @@ impl App {
         } else {
             Confirm::Restore(keys)
         };
-        self.popup = Some(Popup::Confirm {
-            title: t(k),
-            lines: vec![t(&format!("{k}.desc")), String::new(), t("restore.note")],
-            action,
-        });
+        self.popup = Some(flow::restore(k, action));
     }
 
     fn request_apply(&mut self) {
@@ -886,31 +806,19 @@ impl App {
                 _ => None,
             })
             .collect();
-        self.popup = Some(Popup::Confirm {
-            title: tf("confirm.apply", &[("n", &lines.len().to_string())]),
-            lines,
-            action: Confirm::Apply,
-        });
+        self.popup = Some(flow::apply(lines, Confirm::Apply));
     }
 
     fn request_discard(&mut self) {
         if !self.store.dirty() {
             return self.toast(t("msg.nothing"), NoteKind::Info);
         }
-        self.popup = Some(Popup::Confirm {
-            title: t("confirm.discard.title"),
-            lines: vec![t("confirm.discard")],
-            action: Confirm::Discard,
-        });
+        self.popup = Some(flow::discard(Confirm::Discard));
     }
 
     fn request_quit(&mut self) {
         if self.store.dirty() {
-            self.popup = Some(Popup::Confirm {
-                title: t("confirm.quit.title"),
-                lines: vec![t("confirm.quit")],
-                action: Confirm::Quit,
-            });
+            self.popup = Some(flow::quit(Confirm::Quit));
         } else {
             self.quit = true;
         }
@@ -1053,33 +961,15 @@ impl App {
 
     // ------------------------------------------------------------ ratón
 
-    fn hit_at(&self, x: u16, y: u16) -> Option<Hit> {
-        let p = Position { x, y };
-        self.hits
-            .iter()
-            .rev()
-            .find(|(r, _)| r.contains(p))
-            .map(|(_, h)| *h)
-    }
-
     fn hit_rect(&self, hit: Hit) -> Option<Rect> {
-        self.hits
-            .iter()
-            .rev()
-            .find(|(_, h)| *h == hit)
-            .map(|(r, _)| *r)
+        mouse::hit_rect(&self.hits, hit)
     }
 
     pub fn on_mouse(&mut self, m: MouseEvent) {
-        let hit = self.hit_at(m.column, m.row);
-        match m.kind {
-            MouseEventKind::Moved => self.hover = hit,
-            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                let code = if m.kind == MouseEventKind::ScrollUp {
-                    KeyCode::Up
-                } else {
-                    KeyCode::Down
-                };
+        match mouse::read(m, &self.hits, &mut self.clicks) {
+            Mouse::Hover(hit) => self.hover = hit,
+            Mouse::Scroll { down, hit } => {
+                let code = if down { KeyCode::Down } else { KeyCode::Up };
                 if self.popup.is_none() && matches!(hit, Some(Hit::Sidebar(_))) {
                     self.focus = Focus::Sidebar;
                     self.sidebar_key(KeyEvent::new(code, KeyModifiers::NONE));
@@ -1087,22 +977,16 @@ impl App {
                     self.on_key(KeyEvent::new(code, KeyModifiers::NONE));
                 }
             }
-            MouseEventKind::Down(MouseButton::Left) => {
-                let double = self.last_click.is_some_and(|(at, h)| {
-                    Some(h) == hit && at.elapsed() < Duration::from_millis(400)
-                });
-                self.last_click = hit.map(|h| (Instant::now(), h));
-                self.click(hit, double, m.column);
+            Mouse::Click { hit, double, x } => self.click(hit, double, x),
+            Mouse::Menu { hit, at }
+                if self.popup.is_none() || matches!(self.popup, Some(Popup::Menu(_))) =>
+            {
+                self.open_menu(hit, at)
             }
-            MouseEventKind::Down(MouseButton::Right) => {
-                if self.popup.is_none() || matches!(self.popup, Some(Popup::Menu(_))) {
-                    self.open_menu(hit, (m.column, m.row));
-                }
-            }
-            MouseEventKind::Drag(MouseButton::Left) => {
+            Mouse::Drag { hit, x } => {
                 self.hover = hit;
-                if let Some(Hit::Ctrl(i, Sub::Slider)) = hit {
-                    self.slide(i, m.column);
+                if let Some(i) = hit.and_then(|h| h.slider_row()) {
+                    self.slide(i, x);
                 }
             }
             _ => {}
@@ -1110,12 +994,8 @@ impl App {
     }
 
     fn slide(&mut self, row: usize, x: u16) {
-        let Some(r) = self.hit_rect(Hit::Ctrl(row, Sub::Slider)) else {
-            return;
-        };
-        if let Some(Row::Field(f)) = self.rows().get(row)
-            && let Some(v) = field::slider_value(&f.def.kind, r, x)
-        {
+        let rows = self.rows();
+        if let Some((f, v)) = mouse::slider(&self.hits, &rows, row, x) {
             self.store.set_field(&f.bind, v, f.def.default.as_ref());
         }
     }
@@ -1350,30 +1230,16 @@ impl App {
             Hit::Close => t("hint.close"),
             Hit::Back => t("hint.back"),
             Hit::Search => t("hint.search_options"),
-            Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
-                Row::Field(f) if Self::is_list_row(&f.bind.0) => {
-                    format!("{} — {}", f.def.label, t("hint.bind"))
+            Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => {
+                let rows = self.rows();
+                match rows.get(i)? {
+                    Row::Field(f) if Self::is_list_row(&f.bind.0) => {
+                        format!("{} — {}", f.def.label, t("hint.bind"))
+                    }
+                    _ => hints::row(&rows, i)?,
                 }
-                Row::Action(label, _) => format!("{label} — {}", t("hint.click_run")),
-                Row::Field(f) => {
-                    let what = match f.def.kind {
-                        Kind::Bool => t("hint.click_toggle"),
-                        Kind::Enum(_) | Kind::Multi(_) => t("hint.click_choose"),
-                        Kind::Float {
-                            min: Some(_),
-                            max: Some(_),
-                            ..
-                        } => t("hint.click_slide"),
-                        Kind::Int { .. } | Kind::Float { .. } => t("hint.click_step"),
-                        _ => t("hint.click_edit"),
-                    };
-                    format!("{} — {what}", f.def.label)
-                }
-                _ => return None,
-            },
-            Hit::Ctrl(_, Sub::Minus) => t("hint.minus"),
-            Hit::Ctrl(_, Sub::Plus) => t("hint.plus"),
-            Hit::Ctrl(_, Sub::Slider) => t("hint.slider"),
+            }
+            Hit::Ctrl(_, sub) => hints::ctrl(sub)?,
             Hit::Button(i) => match Button::ALL[i] {
                 Button::Apply if self.store.dirty() => {
                     tf("btn.apply.desc", &[("n", &self.pending().to_string())])
@@ -1382,11 +1248,7 @@ impl App {
                 Button::Apply | Button::Cancel => t("btn.clean"),
                 Button::Restore => t(&format!("{}.desc", self.restore_scope().1)),
             },
-            Hit::PopupItem(i) => match &self.popup {
-                Some(Popup::Picker(p)) => p.items.get(i).map(|it| it.detail.clone())?,
-                Some(Popup::Checklist(c)) => c.opts.get(i).map(|o| o.desc.clone())?,
-                _ => return None,
-            },
+            Hit::PopupItem(i) => hints::popup_item(self.popup.as_ref(), i)?,
             Hit::MenuItem(_) | Hit::ModalButton(_) => return None,
         })
         .filter(|s| !s.is_empty())

@@ -1,7 +1,9 @@
 //! Textos del estudio de temas sobre el sistema de idiomas del núcleo.
 
 use lizarbe_core::i18n as core;
-pub use lizarbe_core::i18n::{Lang, lang, set_lang};
+pub use lizarbe_core::i18n::lang;
+#[cfg(test)]
+pub use lizarbe_core::i18n::{Lang, set_lang};
 
 const ES: &str = include_str!("i18n/es.json");
 const EN: &str = include_str!("i18n/en.json");
@@ -24,20 +26,13 @@ pub fn tf(key: &str, args: &[(&str, &str)]) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn dictionaries_have_same_keys() {
-        let m = core::key_mismatch(ES, EN);
-        assert!(m.is_empty(), "claves distintas: {m:?}");
-    }
+    /// Prefijos de claves que se arman en tiempo de ejecución.
+    const DYNAMIC: &[&str] = &["c.", "tab."];
 
     #[test]
-    fn every_used_key_exists() {
-        init();
+    fn dictionaries_are_complete_and_used() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let missing: Vec<_> = core::used_keys(&src)
-            .into_iter()
-            .filter(|(_, k)| !k.contains('{') && !core::core_has(k) && core::t_opt(k).is_none())
-            .collect();
-        assert!(missing.is_empty(), "faltan textos: {missing:?}");
+        let problems = core::dictionary_problems(ES, EN, &src, DYNAMIC);
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 }

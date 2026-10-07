@@ -60,7 +60,6 @@
   "ft.section": "sección",
   "ft.yes": "sí",
   "hdr.advanced": "Avanzado",
-  "hdr.pending": "{n} pendiente(s)",
   "hdr.simple": "Simple",
   "help.activate": "Editar / elegir / activar",
   "help.apply": "Aplicar los cambios (con copia de seguridad)",
@@ -142,5 +141,10 @@
   "val.empty": "vacío",
   "val.example": "ej.",
   "val.off": "No",
-  "val.on": "Sí"
+  "val.on": "Sí",
+  "cli.about": "Herramienta de configuración de Lizarbe para Omarchy.",
+  "cli.config_dir": "usar una carpeta de pruebas en lugar de tu configuración",
+  "hint.back": "Vuelve atrás: del contenido al menú, o cierra la sección abierta",
+  "hint.search_options": "Buscar una opción en todas las secciones",
+  "hint.close": "Cierra la ventana (pregunta si hay cambios sin guardar)"
 }

@@ -7,10 +7,8 @@ use lizarbe_core::prefs::Prefs;
 use lizarbe_core::term::{Command, TuiApp};
 use lizarbe_core::theme::Palette;
 use ratatui::Frame;
-use ratatui::crossterm::event::{
-    KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
-use ratatui::layout::{Position, Rect};
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
+use ratatui::layout::Rect;
 use serde_json::{Value, json};
 
 use crate::i18n::{self, t, tf};
@@ -27,7 +25,11 @@ use crate::ui::popup::{
     PickTarget, Picker, Popup, WInput, WPick, fold,
 };
 use lizarbe_core::field::{self, Activation};
-use lizarbe_core::view::CoreHit;
+use lizarbe_core::flow;
+use lizarbe_core::hints;
+use lizarbe_core::mouse::{self, Mouse};
+use lizarbe_core::search;
+use lizarbe_core::view::CoreHit as _;
 pub use lizarbe_core::view::Sub;
 
 /// Marcadores de opciones especiales en los selectores.
@@ -176,50 +178,12 @@ pub enum Hit {
     SearchOptions,
 }
 
-impl CoreHit for Hit {
-    fn row(i: usize) -> Self {
-        Hit::Row(i)
-    }
-    fn ctrl(i: usize, sub: Sub) -> Self {
-        Hit::Ctrl(i, sub)
-    }
-    fn button(i: usize) -> Self {
-        Hit::Button(i)
-    }
-    fn sidebar(i: usize) -> Self {
-        Hit::Sidebar(i)
-    }
-    fn close() -> Self {
-        Hit::Close
-    }
-    fn back() -> Self {
-        Hit::Back
-    }
-    fn search() -> Self {
-        Hit::SearchOptions
-    }
-    fn mode_toggle() -> Self {
-        Hit::ModeToggle
-    }
-    fn lang_toggle() -> Self {
-        Hit::LangToggle
-    }
-    fn popup_item(i: usize) -> Self {
-        Hit::PopupItem(i)
-    }
-    fn modal_button(i: usize) -> Self {
-        Hit::ModalButton(i)
-    }
-    fn menu_item(i: usize) -> Self {
-        Hit::MenuItem(i)
-    }
-    fn row_index(&self) -> Option<usize> {
-        match self {
-            Hit::Row(i) | Hit::Ctrl(i, _) => Some(*i),
-            _ => None,
-        }
-    }
-}
+lizarbe_core::core_hit!(Hit {
+    sidebar: Sidebar,
+    search: SearchOptions,
+    mode: Hit::ModeToggle,
+    lang: Hit::LangToggle,
+});
 
 #[derive(Debug, Default)]
 pub struct WidgetsView {
@@ -285,7 +249,7 @@ pub struct App {
     pub shell_running: bool,
     last_check: Instant,
     palette_watch: lizarbe_core::theme::PaletteWatcher,
-    last_click: Option<(Instant, Hit)>,
+    clicks: mouse::Clicks<Hit>,
 }
 
 impl App {
@@ -315,7 +279,7 @@ impl App {
             shell_running,
             last_check: Instant::now(),
             palette_watch,
-            last_click: None,
+            clicks: mouse::Clicks::default(),
         }
     }
 
@@ -851,67 +815,32 @@ impl App {
 
     fn request_restore(&mut self) {
         let (scope, k) = self.restore_scope();
-        self.popup = Some(Popup::Confirm {
-            title: t(k),
-            lines: vec![t(&format!("{k}.desc")), String::new(), t("restore.note")],
-            action: Confirm::Restore(scope),
-        });
+        self.popup = Some(flow::restore(k, Confirm::Restore(scope)));
     }
 
-    /// Opciones que se pueden buscar: las secciones y los campos de Barra,
-    /// Reposo y Apariencia (la clave es la posición entre los campos).
-    pub fn search_entries(&self) -> Vec<lizarbe_core::search::Entry> {
-        use lizarbe_core::search::Entry;
+    /// Opciones que se pueden buscar: las secciones y las filas de Barra,
+    /// Reposo y Apariencia.
+    pub fn search_entries(&self) -> Vec<search::Entry> {
         let mut out = vec![];
         for (si, s) in Section::ALL.iter().enumerate() {
-            out.push(Entry {
-                section: si,
-                section_title: s.title(),
-                group: String::new(),
-                key: String::new(),
-                label: s.title(),
-                desc: String::new(),
-            });
+            out.push(search::section_entry(si, &s.title()));
             let rows = match s {
                 Section::Bar => self.bar_rows(),
                 Section::Idle => self.idle_rows(),
                 Section::Appearance => self.appearance_rows(),
                 _ => continue,
             };
-            let mut group = String::new();
-            let mut n = 0;
-            for r in rows {
-                match r {
-                    Row::Header(h) => group = h,
-                    Row::Field(f) => {
-                        out.push(Entry {
-                            section: si,
-                            section_title: s.title(),
-                            group: group.clone(),
-                            key: n.to_string(),
-                            label: f.def.label.clone(),
-                            desc: f.def.desc.clone(),
-                        });
-                        n += 1;
-                    }
-                    _ => {}
-                }
-            }
+            out.extend(search::entries_from_rows(si, &s.title(), &rows));
         }
         out
     }
 
     pub fn open_search(&mut self) {
-        let items = lizarbe_core::search::pick_items(&self.search_entries());
-        self.popup = Some(Popup::Picker(Picker {
-            anchor: None,
-            title: t("search.title"),
-            items,
-            sel: 0,
-            filter: String::new(),
-            current: None,
-            target: PickTarget::App(WPick::Search),
-        }));
+        let target = PickTarget::App(WPick::Search);
+        self.popup = Some(Popup::Picker(search::picker(
+            &self.search_entries(),
+            target,
+        )));
     }
 
     fn jump_to(&mut self, section: usize, key: &str) {
@@ -919,17 +848,7 @@ impl App {
             return;
         };
         self.go_section(*s);
-        let Ok(n) = key.parse::<usize>() else {
-            return;
-        };
-        let target = self
-            .rows()
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| matches!(r, Row::Field(_)))
-            .nth(n)
-            .map(|(i, _)| i);
-        if let Some(i) = target {
+        if let Some(i) = search::row_of(key) {
             self.form_state().sel = i;
         }
     }
@@ -1436,31 +1355,19 @@ impl App {
         for op in &self.store.ops {
             lines.push(format!("plugin {op:?}"));
         }
-        self.popup = Some(Popup::Confirm {
-            title: tf("confirm.apply", &[("n", &lines.len().to_string())]),
-            lines,
-            action: Confirm::Apply,
-        });
+        self.popup = Some(flow::apply(lines, Confirm::Apply));
     }
 
     fn request_discard(&mut self) {
         if !self.store.dirty() {
             return self.toast(t("msg.nothing"), NoteKind::Info);
         }
-        self.popup = Some(Popup::Confirm {
-            title: t("confirm.discard.title"),
-            lines: vec![t("confirm.discard")],
-            action: Confirm::Discard,
-        });
+        self.popup = Some(flow::discard(Confirm::Discard));
     }
 
     fn request_quit(&mut self) {
         if self.store.dirty() {
-            self.popup = Some(Popup::Confirm {
-                title: t("confirm.quit.title"),
-                lines: vec![t("confirm.quit")],
-                action: Confirm::Quit,
-            });
+            self.popup = Some(flow::quit(Confirm::Quit));
         } else {
             self.quit = true;
         }
@@ -1675,65 +1582,40 @@ impl App {
 
     // ------------------------------------------------------------ ratón
 
-    fn hit_at(&self, x: u16, y: u16) -> Option<Hit> {
-        let p = Position { x, y };
-        self.hits
-            .iter()
-            .rev()
-            .find(|(r, _)| r.contains(p))
-            .map(|(_, h)| *h)
-    }
-
     fn hit_rect(&self, hit: Hit) -> Option<Rect> {
-        self.hits
-            .iter()
-            .rev()
-            .find(|(_, h)| *h == hit)
-            .map(|(r, _)| *r)
+        mouse::hit_rect(&self.hits, hit)
     }
 
     pub fn on_mouse(&mut self, m: MouseEvent) {
-        let hit = self.hit_at(m.column, m.row);
         self.mouse = Some((m.column, m.row));
-        match m.kind {
-            MouseEventKind::Moved => self.hover = hit,
-            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
-                let code = if m.kind == MouseEventKind::ScrollUp {
-                    KeyCode::Up
+        match mouse::read(m, &self.hits, &mut self.clicks) {
+            Mouse::Hover(hit) => self.hover = hit,
+            Mouse::Scroll { down, hit } => {
+                let code = if down { KeyCode::Down } else { KeyCode::Up };
+                // La rueda sobre el sidebar cambia de sección.
+                if self.popup.is_none() && matches!(hit, Some(Hit::Sidebar(_))) {
+                    self.focus = Focus::Sidebar;
+                    self.sidebar_key(KeyEvent::new(code, KeyModifiers::NONE));
                 } else {
-                    KeyCode::Down
-                };
-                match (self.popup.is_some(), hit) {
-                    // La rueda sobre el sidebar cambia de sección.
-                    (false, Some(Hit::Sidebar(_))) => {
-                        self.focus = Focus::Sidebar;
-                        self.sidebar_key(KeyEvent::new(code, KeyModifiers::NONE));
-                    }
-                    _ => self.on_key(KeyEvent::new(code, KeyModifiers::NONE)),
+                    self.on_key(KeyEvent::new(code, KeyModifiers::NONE));
                 }
             }
-            MouseEventKind::Down(MouseButton::Left) => {
-                let double = self.last_click.is_some_and(|(at, h)| {
-                    Some(h) == hit && at.elapsed() < Duration::from_millis(400)
-                });
-                self.last_click = hit.map(|h| (Instant::now(), h));
-                self.click(hit, double, m.column);
+            Mouse::Click { hit, double, x } => self.click(hit, double, x),
+            Mouse::Menu { hit, at }
+                if self.popup.is_none() || matches!(self.popup, Some(Popup::Menu(_))) =>
+            {
+                self.open_menu(hit, at)
             }
-            MouseEventKind::Down(MouseButton::Right) => {
-                if self.popup.is_none() || matches!(self.popup, Some(Popup::Menu(_))) {
-                    self.open_menu(hit, (m.column, m.row));
-                }
-            }
-            MouseEventKind::Drag(MouseButton::Left) => {
+            Mouse::Drag { hit, x } => {
                 self.hover = hit;
                 if self.widgets.drag.is_some() {
                     self.widgets.drag_over = hit;
-                } else if let Some(Hit::Ctrl(i, Sub::Slider)) = hit {
+                } else if let Some(i) = hit.and_then(|h| h.slider_row()) {
                     // Arrastrar sobre un deslizador cambia el valor en vivo.
-                    self.slide(i, m.column);
+                    self.slide(i, x);
                 }
             }
-            MouseEventKind::Up(MouseButton::Left) => {
+            Mouse::Release { .. } => {
                 if let Some(from) = self.widgets.drag.take() {
                     let over = self.widgets.drag_over.take();
                     let to = match over {
@@ -1756,14 +1638,8 @@ impl App {
 
     /// Fija el valor de un deslizador según la columna del ratón.
     fn slide(&mut self, row: usize, x: u16) {
-        let Some(r) = self.hit_rect(Hit::Ctrl(row, Sub::Slider)) else {
-            return;
-        };
         let rows = self.rows();
-        let Some(Row::Field(f)) = rows.get(row) else {
-            return;
-        };
-        if let Some(v) = field::slider_value(&f.def.kind, r, x) {
+        if let Some((f, v)) = mouse::slider(&self.hits, &rows, row, x) {
             self.store.set_field(&f.bind, v, f.def.default.as_ref());
         }
     }
@@ -2149,28 +2025,8 @@ impl App {
             Hit::Close => t("hint.close"),
             Hit::Back => t("hint.back"),
             Hit::SearchOptions => t("hint.search_options"),
-            Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
-                Row::Field(f) => {
-                    let what = match f.def.kind {
-                        Kind::Bool => t("hint.click_toggle"),
-                        Kind::Enum(_) | Kind::Multi(_) => t("hint.click_choose"),
-                        _ if !f.def.presets.is_empty() => t("hint.click_choose"),
-                        Kind::Float {
-                            min: Some(_),
-                            max: Some(_),
-                            ..
-                        } => t("hint.click_slide"),
-                        Kind::Int { .. } | Kind::Float { .. } => t("hint.click_step"),
-                        _ => t("hint.click_edit"),
-                    };
-                    format!("{} — {what}", f.def.label)
-                }
-                Row::Action(label, _) => format!("{label} — {}", t("hint.click_run")),
-                _ => return None,
-            },
-            Hit::Ctrl(_, Sub::Minus) => t("hint.minus"),
-            Hit::Ctrl(_, Sub::Plus) => t("hint.plus"),
-            Hit::Ctrl(_, Sub::Slider) => t("hint.slider"),
+            Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => hints::row(&self.rows(), i)?,
+            Hit::Ctrl(_, sub) => hints::ctrl(sub)?,
             Hit::Widget(s, i) => {
                 let e = sj::section(&self.store.json, s).get(i)?;
                 let id = sj::entry_id(e);
@@ -2204,11 +2060,7 @@ impl App {
                 Button::Apply | Button::Cancel => t("btn.clean"),
                 Button::Restore => t(&format!("{}.desc", self.restore_scope().1)),
             },
-            Hit::PopupItem(i) => match &self.popup {
-                Some(Popup::Picker(p)) => p.items.get(i).map(|it| it.detail.clone())?,
-                Some(Popup::Checklist(c)) => c.opts.get(i).map(|o| o.desc.clone())?,
-                _ => return None,
-            },
+            Hit::PopupItem(i) => hints::popup_item(self.popup.as_ref(), i)?,
             Hit::MenuItem(_) | Hit::ModalButton(_) => return None,
         })
         .filter(|s| !s.is_empty())

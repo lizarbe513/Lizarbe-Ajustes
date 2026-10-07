@@ -11,8 +11,6 @@
 //! * un bloque gestionado en `~/.config/uwsm/env`, para el resto de la sesión
 //!   (el menú Capturar de Omarchy) a partir del próximo inicio de sesión.
 
-use std::path::PathBuf;
-
 use serde_json::Value;
 
 use crate::hyprfile::Values;
@@ -57,18 +55,6 @@ fn text<'a>(values: &'a Values, key: &str) -> Option<&'a str> {
         .filter(|s| !s.is_empty())
 }
 
-/// `~` y `~/…` → ruta completa.
-pub fn expand(path: &str) -> String {
-    let home = || dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-    if path == "~" {
-        home().display().to_string()
-    } else if let Some(rest) = path.strip_prefix("~/") {
-        home().join(rest).display().to_string()
-    } else {
-        path.to_string()
-    }
-}
-
 /// Comando del atajo si algo difiere de lo que hace Omarchy por defecto.
 pub fn command(values: &Values) -> Option<String> {
     let mode = text(values, KEY_MODE).filter(|m| MODES.contains(m));
@@ -93,10 +79,16 @@ pub fn command(values: &Values) -> Option<String> {
 pub fn env_vars(values: &Values) -> Vec<(&'static str, String)> {
     let mut out = vec![];
     if let Some(d) = text(values, KEY_DIR) {
-        out.push(("OMARCHY_SCREENSHOT_DIR", expand(d)));
+        out.push((
+            "OMARCHY_SCREENSHOT_DIR",
+            lizarbe_core::paths::expand(d).display().to_string(),
+        ));
     }
     if let Some(d) = text(values, KEY_RECDIR) {
-        out.push(("OMARCHY_SCREENRECORD_DIR", expand(d)));
+        out.push((
+            "OMARCHY_SCREENRECORD_DIR",
+            lizarbe_core::paths::expand(d).display().to_string(),
+        ));
     }
     if let Some(e) = text(values, KEY_EDITOR) {
         out.push(("OMARCHY_SCREENSHOT_EDITOR", e.to_string()));

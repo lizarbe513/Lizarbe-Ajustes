@@ -60,7 +60,6 @@
   "ft.section": "section",
   "ft.yes": "yes",
   "hdr.advanced": "Advanced",
-  "hdr.pending": "{n} pending",
   "hdr.simple": "Simple",
   "help.activate": "Edit / choose / activate",
   "help.apply": "Apply changes (with a backup)",
@@ -142,5 +141,10 @@
   "val.empty": "empty",
   "val.example": "e.g.",
   "val.off": "No",
-  "val.on": "Yes"
+  "val.on": "Yes",
+  "cli.about": "Lizarbe configuration tool for Omarchy.",
+  "cli.config_dir": "use a test folder instead of your configuration",
+  "hint.back": "Go back: from the content to the menu, or close the open section",
+  "hint.search_options": "Find an option across all sections",
+  "hint.close": "Close the window (asks first if there are unsaved changes)"
 }

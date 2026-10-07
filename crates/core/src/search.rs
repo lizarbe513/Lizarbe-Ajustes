@@ -4,7 +4,8 @@
 
 use serde_json::{Value, json};
 
-use crate::popup::PickItem;
+use crate::form::Row;
+use crate::popup::{PickItem, PickTarget, Picker, PopupTypes};
 
 /// Una opción que se puede encontrar.
 #[derive(Debug, Clone, PartialEq)]
@@ -17,6 +18,51 @@ pub struct Entry {
     pub key: String,
     pub label: String,
     pub desc: String,
+}
+
+/// Entrada que lleva a una sección entera (sin descripción, para que una
+/// búsqueda de palabras sueltas prefiera la opción a la sección que la contiene).
+pub fn section_entry(section: usize, title: &str) -> Entry {
+    Entry {
+        section,
+        section_title: title.to_string(),
+        group: String::new(),
+        key: String::new(),
+        label: title.to_string(),
+        desc: String::new(),
+    }
+}
+
+/// Entradas de las filas de un formulario: cada campo y cada acción, con su
+/// encabezado como grupo. La clave es la posición de la fila ([`row_of`]).
+pub fn entries_from_rows<B, A>(section: usize, title: &str, rows: &[Row<B, A>]) -> Vec<Entry> {
+    let mut out = vec![];
+    let mut group = String::new();
+    for (i, r) in rows.iter().enumerate() {
+        let (label, desc) = match r {
+            Row::Header(h) => {
+                group = h.clone();
+                continue;
+            }
+            Row::Field(f) => (f.def.label.clone(), f.def.desc.clone()),
+            Row::Action(label, _) => (label.clone(), String::new()),
+            Row::Note(..) => continue,
+        };
+        out.push(Entry {
+            section,
+            section_title: title.to_string(),
+            group: group.clone(),
+            key: i.to_string(),
+            label,
+            desc,
+        });
+    }
+    out
+}
+
+/// Fila a la que lleva una clave de [`entries_from_rows`].
+pub fn row_of(key: &str) -> Option<usize> {
+    key.parse().ok()
 }
 
 /// Las entradas como elementos del selector, agrupadas por sección y grupo.
@@ -35,6 +81,19 @@ pub fn pick_items(entries: &[Entry]) -> Vec<PickItem> {
             enabled: true,
         })
         .collect()
+}
+
+/// Ventana de búsqueda con estas entradas.
+pub fn picker<T: PopupTypes>(entries: &[Entry], target: PickTarget<T>) -> Picker<T> {
+    Picker {
+        title: crate::i18n::t("search.title"),
+        items: pick_items(entries),
+        sel: 0,
+        filter: String::new(),
+        target,
+        current: None,
+        anchor: None,
+    }
 }
 
 /// Sección y clave de la opción elegida.

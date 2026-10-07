@@ -3,7 +3,8 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.7.0"
+license = "MIT"
 edition = "2024"
 repository = "https://github.com/lizarbe513/Lizarbe-Ajustes"
 

@@ -23,30 +23,15 @@ pub fn tf(key: &str, args: &[(&str, &str)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
+
+    /// Prefijos de claves que se arman en tiempo de ejecución.
+    const DYNAMIC: &[&str] = &["bc.", "g.", "mon.", "o.", "restore.", "sec."];
 
     #[test]
-    fn dictionaries_have_same_keys() {
-        let m = core::key_mismatch(ES, EN);
-        assert!(m.is_empty(), "claves sin traducir: {m:?}");
-    }
-
-    #[test]
-    fn all_used_keys_exist() {
-        let es: HashMap<String, String> = serde_json::from_str(ES).unwrap();
+    fn dictionaries_are_complete_and_used() {
         let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut missing: Vec<String> = core::used_keys(&src)
-            .into_iter()
-            .filter(|(_, k)| !es.contains_key(k) && !core::core_has(k))
-            .map(|(p, k)| format!("{}: {k}", p.display()))
-            .collect();
-        missing.sort();
-        missing.dedup();
-        assert!(
-            missing.is_empty(),
-            "claves inexistentes:\n{}",
-            missing.join("\n")
-        );
+        let problems = core::dictionary_problems(ES, EN, &src, DYNAMIC);
+        assert!(problems.is_empty(), "{}", problems.join("\n"));
     }
 
     /// Cada ajuste del catálogo tiene nombre, descripción y textos de opciones

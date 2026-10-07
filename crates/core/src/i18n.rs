@@ -185,6 +185,67 @@ pub fn key_mismatch(es_json: &str, en_json: &str) -> Vec<String> {
     missing
 }
 
+/// Fuente de todos los `.rs` de `dirs` (sin los `i18n.rs`).
+fn sources(dirs: &[PathBuf]) -> String {
+    let mut out = String::new();
+    let mut stack: Vec<PathBuf> = dirs.to_vec();
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs") && !p.ends_with("i18n.rs") {
+                out.push_str(&std::fs::read_to_string(&p).unwrap_or_default());
+            }
+        }
+    }
+    out
+}
+
+/// Claves de `json` que no aparecen escritas en ningún `.rs` de `dirs` ni
+/// empiezan por uno de los prefijos `dynamic` (claves que se arman con
+/// `format!`, como `o.{clave}`).
+pub fn unused_keys(json: &str, dirs: &[PathBuf], dynamic: &[&str]) -> Vec<String> {
+    let src = sources(dirs);
+    let mut out: Vec<String> = parse(json, "i18n")
+        .into_keys()
+        .filter(|k| !dynamic.iter().any(|p| k.starts_with(p)))
+        .filter(|k| !src.contains(&format!("\"{k}\"")))
+        .collect();
+    out.sort();
+    out
+}
+
+/// Problemas de los diccionarios de una aplicación: claves sin traducir,
+/// claves usadas que no existen y claves que sobran. Vacío si todo cuadra.
+/// Lo usan los tests de cada crate.
+pub fn dictionary_problems(es: &str, en: &str, src: &Path, dynamic: &[&str]) -> Vec<String> {
+    let mut out: Vec<String> = key_mismatch(es, en)
+        .into_iter()
+        .map(|k| format!("sin traducir: {k}"))
+        .collect();
+    let dict = parse(es, "es.json");
+    let mut missing: Vec<String> = used_keys(src)
+        .into_iter()
+        .filter(|(_, k)| !dict.contains_key(k) && !core_has(k))
+        .map(|(p, k)| format!("no existe: {k} ({})", p.display()))
+        .collect();
+    missing.sort();
+    missing.dedup();
+    out.extend(missing);
+    out.extend(
+        unused_keys(es, &[src.to_path_buf()], dynamic)
+            .into_iter()
+            // Las que repiten una clave del núcleo la sustituyen: las usa el núcleo.
+            .filter(|k| !core_has(k))
+            .map(|k| format!("sin usar: {k}")),
+    );
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,6 +257,18 @@ mod tests {
             include_str!("../i18n/en.json"),
         );
         assert!(m.is_empty(), "claves sin traducir: {m:?}");
+    }
+
+    /// Las claves del núcleo las usan el propio núcleo y las aplicaciones.
+    #[test]
+    fn core_keys_are_used() {
+        let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let unused = unused_keys(
+            include_str!("../i18n/es.json"),
+            &[crates],
+            &["key.", "val.", "mb."],
+        );
+        assert!(unused.is_empty(), "claves del núcleo sin usar: {unused:?}");
     }
 
     #[test]

@@ -2,6 +2,7 @@
 name = "lizarbe-core"
 description = "Núcleo compartido de las TUIs de configuración Lizarbe para Omarchy"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 repository.workspace = true
 

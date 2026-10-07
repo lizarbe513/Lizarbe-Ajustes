@@ -46,6 +46,72 @@ pub trait CoreHit: Copy + PartialEq {
     fn menu_item(i: usize) -> Self;
     /// Si es una fila o un control de la fila `i` de un formulario.
     fn row_index(&self) -> Option<usize>;
+    /// Si es el deslizador de la fila `i`.
+    fn slider_row(&self) -> Option<usize>;
+}
+
+/// Implementa [`CoreHit`] para el tipo de zonas de una aplicación. El tipo
+/// debe tener las variantes `Row(usize)`, `Ctrl(usize, Sub)`,
+/// `Button(usize)`, `Close`, `Back`, `PopupItem(usize)`, `ModalButton(usize)`
+/// y `MenuItem(usize)`; las demás se indican:
+///
+/// ```ignore
+/// core_hit!(Hit { sidebar: Sidebar, search: Search, mode: Hit::ModeToggle, lang: Hit::LangToggle });
+/// ```
+#[macro_export]
+macro_rules! core_hit {
+    ($ty:ident { sidebar: $sb:ident, search: $se:ident, mode: $mode:expr, lang: $lang:expr $(,)? }) => {
+        impl $crate::view::CoreHit for $ty {
+            fn row(i: usize) -> Self {
+                $ty::Row(i)
+            }
+            fn ctrl(i: usize, sub: $crate::view::Sub) -> Self {
+                $ty::Ctrl(i, sub)
+            }
+            fn button(i: usize) -> Self {
+                $ty::Button(i)
+            }
+            fn sidebar(i: usize) -> Self {
+                $ty::$sb(i)
+            }
+            fn close() -> Self {
+                $ty::Close
+            }
+            fn back() -> Self {
+                $ty::Back
+            }
+            fn search() -> Self {
+                $ty::$se
+            }
+            fn mode_toggle() -> Self {
+                $mode
+            }
+            fn lang_toggle() -> Self {
+                $lang
+            }
+            fn popup_item(i: usize) -> Self {
+                $ty::PopupItem(i)
+            }
+            fn modal_button(i: usize) -> Self {
+                $ty::ModalButton(i)
+            }
+            fn menu_item(i: usize) -> Self {
+                $ty::MenuItem(i)
+            }
+            fn row_index(&self) -> Option<usize> {
+                match self {
+                    $ty::Row(i) | $ty::Ctrl(i, _) => Some(*i),
+                    _ => None,
+                }
+            }
+            fn slider_row(&self) -> Option<usize> {
+                match self {
+                    $ty::Ctrl(i, $crate::view::Sub::Slider) => Some(*i),
+                    _ => None,
+                }
+            }
+        }
+    };
 }
 
 /// Lo que necesita una pieza para dibujarse y registrar dónde se puede hacer clic.

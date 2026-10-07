@@ -3,12 +3,16 @@
 /// "#rrggbb" / "#rgb" / "rrggbb" → (r, g, b).
 pub fn parse_hex(s: &str) -> Option<(u8, u8, u8)> {
     let h = s.trim().trim_start_matches('#');
+    // Solo cifras hex: así cortar por bytes nunca parte un carácter.
+    if !h.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
     let h = if h.len() == 8 { &h[..6] } else { h };
     if h.len() == 3 {
         let p = |i: usize| u8::from_str_radix(&h[i..i + 1].repeat(2), 16).ok();
         return Some((p(0)?, p(1)?, p(2)?));
     }
-    if h.len() != 6 || !h.is_ascii() {
+    if h.len() != 6 {
         return None;
     }
     let p = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
@@ -111,6 +115,15 @@ pub fn with_contrast(c: (u8, u8, u8), bg: (u8, u8, u8), min: f32) -> (u8, u8, u8
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn odd_text_is_rejected_without_panicking() {
+        for bad in ["#añña", "ñññ", "#zzzzzz", "", "#12345", "é1"] {
+            assert_eq!(parse_hex(bad), None, "{bad}");
+        }
+        assert_eq!(parse_hex("#ff8800cc"), Some((255, 136, 0)));
+        assert_eq!(parse_hex("abc"), Some((170, 187, 204)));
+    }
 
     #[test]
     fn hex_roundtrip() {

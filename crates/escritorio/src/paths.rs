@@ -17,25 +17,18 @@ pub struct Paths {
 
 impl Paths {
     pub fn detect(config_override: Option<PathBuf>) -> Self {
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
-        let state_home = std::env::var_os("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".local/state"));
+        use lizarbe_core::paths as p;
         let sandbox = config_override.is_some();
-        let hypr_dir = config_override.unwrap_or_else(|| home.join(".config/hypr"));
+        let hypr_dir = config_override.unwrap_or_else(|| p::home().join(".config/hypr"));
         let backup_dir = if sandbox {
             hypr_dir.join(".lizarbe-backups")
         } else {
-            state_home.join("lizarbe/backups/escritorio")
+            p::backups("escritorio")
         };
-        let omarchy_path = std::env::var_os("OMARCHY_PATH")
-            .map(PathBuf::from)
-            .filter(|p| p.is_dir())
-            .unwrap_or_else(|| PathBuf::from("/usr/share/omarchy"));
         Paths {
-            omarchy_path,
+            omarchy_path: p::omarchy(),
             hypr_dir,
-            theme_dir: state_home.join("omarchy/current/theme"),
+            theme_dir: p::current_theme(),
             backup_dir,
             sandbox,
         }

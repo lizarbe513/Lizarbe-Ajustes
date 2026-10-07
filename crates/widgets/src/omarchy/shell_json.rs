@@ -261,6 +261,7 @@ pub fn disabled_list(v: &Value) -> Vec<String> {
 }
 
 pub fn set_disabled(v: &mut Value, id: &str, disabled: bool) {
+    normalize(v);
     let mut list = disabled_list(v);
     list.retain(|x| x != id);
     if disabled {

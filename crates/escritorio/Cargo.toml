@@ -2,6 +2,7 @@
 name = "lizarbe-escritorio"
 description = "Panel TUI para configurar el escritorio Hyprland de Omarchy sin editar archivos"
 version.workspace = true
+license.workspace = true
 edition.workspace = true
 repository.workspace = true
 

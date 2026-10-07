@@ -38,17 +38,7 @@ pub fn hex(s: &str) -> Option<Color> {
 }
 
 fn rgb(s: &str) -> Option<(u8, u8, u8)> {
-    let h = s.trim().trim_start_matches('#');
-    let h = if h.len() == 8 { &h[..6] } else { h };
-    if h.len() == 3 {
-        let p = |i: usize| u8::from_str_radix(&h[i..i + 1].repeat(2), 16).ok();
-        return Some((p(0)?, p(1)?, p(2)?));
-    }
-    if h.len() != 6 {
-        return None;
-    }
-    let p = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
-    Some((p(0)?, p(2)?, p(4)?))
+    crate::color::parse_hex(s)
 }
 
 /// Luminancia relativa (WCAG) de un color.
@@ -97,12 +87,6 @@ pub fn ensure_contrast(
 fn blend_rgb(a: (u8, u8, u8), b: (u8, u8, u8), ratio: f32) -> (u8, u8, u8) {
     let m = |x: u8, y: u8| (x as f32 * (1.0 - ratio) + y as f32 * ratio).round() as u8;
     (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
-}
-
-/// Mezcla `a` con `b` en la proporción `ratio` (0 = a, 1 = b).
-pub fn blend(a: (u8, u8, u8), b: (u8, u8, u8), ratio: f32) -> Color {
-    let m = |x: u8, y: u8| (x as f32 * (1.0 - ratio) + y as f32 * ratio).round() as u8;
-    Color::Rgb(m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
 /// Vigila el `colors.toml` del tema activo y recarga la paleta si cambia
