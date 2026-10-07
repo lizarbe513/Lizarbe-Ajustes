@@ -104,6 +104,7 @@ fn draw_form(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let rows = app.rows();
     let opts = FormOpts {
         focused,
+        action_hint: None,
         dropdown_open: matches!(&app.popup, Some(Popup::Picker(p)) if p.anchor.is_some()),
     };
     let advanced = app.advanced;

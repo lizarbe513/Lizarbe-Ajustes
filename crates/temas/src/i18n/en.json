@@ -10,6 +10,7 @@
   "back.body": "You have unsaved changes. If you leave, they are lost.",
   "back.title": "Leave the editor",
   "bg.first": "{name}  (shown first)",
+  "bg.hint": "D remove  ·  [ ] order  ·  M more",
   "bg.inherited": "(from base theme)",
   "btn.save": "Save",
   "btn.try": "Try on desktop",

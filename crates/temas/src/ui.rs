@@ -456,8 +456,18 @@ fn draw_image(f: &mut Frame, app: &mut App, area: Rect, path: &std::path::Path, 
 
 fn draw_form(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let rows = app.rows();
+    // En Fondos no hay botón «Abrir →»: la fila elegida muestra sus teclas.
+    let bg_rows: Vec<bool> = rows
+        .iter()
+        .map(|r| matches!(r, Row::Action(_, crate::app::Act::Background(_))))
+        .collect();
+    let bg_hint = t("bg.hint");
+    let hint = |i: usize, cursor: bool| -> Option<String> {
+        (cursor && bg_rows.get(i).copied().unwrap_or(false)).then(|| bg_hint.clone())
+    };
     let opts = FormOpts {
         focused,
+        action_hint: (app.tab_kind() == Tab::Backgrounds).then_some(&hint),
         dropdown_open: matches!(&app.popup, Some(Popup::Picker(p)) if p.anchor.is_some()),
     };
     let App {
@@ -972,6 +982,23 @@ mod tests {
             rows.get(sel),
             Some(Row::Action(_, Act::AddBackground))
         ));
+    }
+
+    #[test]
+    fn selected_wallpaper_shows_its_keys_instead_of_an_open_button() {
+        let (t, mut app) = app();
+        open_editor(&mut app);
+        let own = t.path().join("propio.png");
+        std::fs::write(&own, b"x").unwrap();
+        app.draft.as_mut().unwrap().spec.backgrounds = vec![own];
+        app.tab = 4;
+        // el cursor baja hasta el fondo
+        for _ in 0..4 {
+            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        let text = render(&mut app, 150, 40).join("\n");
+        assert!(text.contains("D quitar"), "{text}");
+        assert!(!text.contains("Abrir →"), "{text}");
     }
 
     /// `cargo test dump_screens -- --ignored --nocapture` imprime las pantallas.

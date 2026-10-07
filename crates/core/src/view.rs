@@ -453,9 +453,15 @@ pub struct RowInfo {
 }
 
 /// Opciones de dibujo de un formulario.
-pub struct FormOpts {
+/// Texto que sustituye al botón «Abrir →» de una fila de acción: recibe la
+/// posición de la fila y si es la del cursor; `None` = sin control.
+pub type ActionHint<'a> = &'a dyn Fn(usize, bool) -> Option<String>;
+
+pub struct FormOpts<'a> {
     /// El foco del teclado está en el formulario.
     pub focused: bool,
+    /// Si es `Some`, las filas de acción no dibujan «Abrir →».
+    pub action_hint: Option<ActionHint<'a>>,
     /// Hay un desplegable abierto pegado al control de la fila del cursor.
     pub dropdown_open: bool,
 }
@@ -464,11 +470,16 @@ pub struct FormOpts {
 enum Ctl {
     Toggle(bool),
     Stepper(String),
-    Slider { frac: f64, text: String },
+    Slider {
+        frac: f64,
+        text: String,
+    },
     Select(String),
     Edit(String),
     Color(Option<Color>, String),
     Run(String),
+    /// Texto suelto, sin zona de clic (las teclas de la fila elegida).
+    Hint(String),
 }
 
 fn control_for<B, A>(row: &Row<B, A>) -> Option<Ctl> {
@@ -539,6 +550,7 @@ fn ctl_width(c: &Ctl, cap: usize) -> usize {
         Ctl::Stepper(_) => 13,
         Ctl::Slider { .. } => 17,
         Ctl::Select(s) | Ctl::Edit(s) | Ctl::Run(s) => s.width().min(cap) + 2,
+        Ctl::Hint(s) => s.width().min(cap.max(36)),
         Ctl::Color(_, s) => 3 + s.width().min(cap),
     }
 }
@@ -572,7 +584,7 @@ pub fn draw_form<H: CoreHit, B, A>(
     area: Rect,
     rows: &[Row<B, A>],
     st: &mut FormState,
-    opts: &FormOpts,
+    opts: &FormOpts<'_>,
     info: impl Fn(&FieldRow<B>) -> RowInfo,
 ) {
     st.clamp(rows);
@@ -665,6 +677,7 @@ pub fn draw_form<H: CoreHit, B, A>(
                     &ri,
                     dropdown,
                     opts.focused,
+                    opts.action_hint,
                 )
             }
         }
@@ -687,14 +700,21 @@ fn draw_item<H: CoreHit, B, A>(
     info: &RowInfo,
     dropdown: bool,
     form_focused: bool,
+    action_hint: Option<ActionHint<'_>>,
 ) {
     let pal = ctx.pal;
     let width = area.width as usize;
     let hover_row = row_hovered(ctx, i);
     let lit = focused_sel || hover_row;
-    let Some(ctl) = control_for(row) else { return };
+    let ctl = match (row, action_hint) {
+        (Row::Action(..), Some(h)) => h(i, is_cursor).map(Ctl::Hint),
+        _ => control_for(row),
+    };
+    if ctl.is_none() && !matches!(row, Row::Action(..)) {
+        return;
+    }
     let cap = (width / 2).clamp(10, 30);
-    let cw = ctl_width(&ctl, cap);
+    let cw = ctl.as_ref().map_or(0, |c| ctl_width(c, cap));
     // Margen derecho de 2; el control se alinea a la derecha.
     let cx = area.right().saturating_sub(cw as u16 + 2).max(area.x + 14);
     let left_w = (cx.saturating_sub(area.x) as usize)
@@ -778,7 +798,9 @@ fn draw_item<H: CoreHit, B, A>(
         H::row(i),
     );
 
-    draw_control(f, ctx, cx, y, i, &ctl, cap, lit, dropdown);
+    if let Some(ctl) = &ctl {
+        draw_control(f, ctx, cx, y, i, ctl, cap, lit, dropdown);
+    }
 }
 
 /// Estilo del valor de un control: acento si la fila está activa, tono
@@ -902,6 +924,14 @@ fn draw_control<H: CoreHit>(
             );
             ctx.hit(Rect::new(x, y, 11, 2), H::ctrl(i, Sub::Slider));
             ctx.hit(Rect::new(x + 11, y, 6, 2), H::ctrl(i, Sub::Main));
+        }
+        Ctl::Hint(text) => {
+            put(
+                f,
+                x,
+                y,
+                vec![Span::styled(truncate(text, cap.max(36)), fg(pal.accent))],
+            );
         }
         Ctl::Select(text) | Ctl::Edit(text) | Ctl::Run(text) => {
             let h = hov(ctx, Sub::Main) || (matches!(ctl, Ctl::Select(_)) && dropdown);
