@@ -1,0 +1,593 @@
+# Catálogo curado de la Tienda Lizarbe. Solo paquetes de los repositorios de pacman.
+# Al añadir una app: `cargo test -p lizarbe-tienda -- --ignored` comprueba que los paquetes existen.
+
+[[categoria]]
+id = "internet"
+icono = "󰖟"
+nombre = { es = "Internet", en = "Internet" }
+
+[[categoria]]
+id = "comunicacion"
+icono = "󰍡"
+nombre = { es = "Comunicación", en = "Communication" }
+
+[[categoria]]
+id = "oficina"
+icono = "󰈙"
+nombre = { es = "Oficina y notas", en = "Office & Notes" }
+
+[[categoria]]
+id = "graficos"
+icono = "󰏘"
+nombre = { es = "Dibujo y fotografía", en = "Drawing & Photos" }
+
+[[categoria]]
+id = "3d"
+icono = "󰆧"
+nombre = { es = "3D y CAD", en = "3D & CAD" }
+
+[[categoria]]
+id = "multimedia"
+icono = "󰎈"
+nombre = { es = "Música y vídeo", en = "Music & Video" }
+
+[[categoria]]
+id = "juegos"
+icono = "󰊖"
+nombre = { es = "Juegos", en = "Games" }
+
+[[categoria]]
+id = "desarrollo"
+icono = "󰅩"
+nombre = { es = "Programación", en = "Programming" }
+
+[[categoria]]
+id = "utilidades"
+icono = "󰒓"
+nombre = { es = "Utilidades", en = "Utilities" }
+
+# ---------------------------------------------------------------- Internet
+
+[[app]]
+id = "firefox"
+nombre = "Firefox"
+paquetes = ["firefox"]
+categoria = "internet"
+resumen = { es = "Navegador web libre y conocido", en = "Free and well-known web browser" }
+descripcion = { es = "Navega por internet con un navegador veloz, que respeta tu privacidad y funciona con la mayoría de las páginas.", en = "Browse the web with a fast browser that respects your privacy and works with most websites." }
+etiquetas = ["navegador", "browser", "web", "internet"]
+recomendada = true
+desktop = "firefox"
+
+[[app]]
+id = "chromium"
+nombre = "Chromium"
+paquetes = ["chromium"]
+categoria = "internet"
+resumen = { es = "Navegador web basado en Chrome", en = "Chrome-based web browser" }
+descripcion = { es = "La base libre de Google Chrome. Útil si alguna página o servicio solo funciona bien con navegadores de ese tipo.", en = "The open-source base of Google Chrome. Handy if a site or service only works well with browsers of that kind." }
+etiquetas = ["navegador", "browser", "chrome", "web"]
+desktop = "chromium"
+
+[[app]]
+id = "zen"
+nombre = "Zen Browser"
+paquetes = ["zen-browser-bin"]
+categoria = "internet"
+resumen = { es = "Navegador moderno, ordenado y personalizable", en = "Modern, tidy and customizable browser" }
+descripcion = { es = "Navegador basado en Firefox, con pestañas laterales, espacios de trabajo y un diseño limpio.", en = "Firefox-based browser with sidebar tabs, workspaces and a clean design." }
+etiquetas = ["navegador", "browser", "web", "firefox"]
+recomendada = true
+desktop = "zen"
+
+[[app]]
+id = "thunderbird"
+nombre = "Thunderbird"
+paquetes = ["thunderbird"]
+categoria = "internet"
+resumen = { es = "Lee y envía tu correo electrónico", en = "Read and send your email" }
+descripcion = { es = "Programa de correo con calendario y contactos. Funciona con Gmail, Outlook y la mayoría de proveedores.", en = "Email app with calendar and contacts. Works with Gmail, Outlook and most providers." }
+etiquetas = ["correo", "email", "mail", "gmail", "outlook"]
+desktop = "net.thunderbird.Thunderbird"
+
+[[app]]
+id = "qbittorrent"
+nombre = "qBittorrent"
+paquetes = ["qbittorrent"]
+categoria = "internet"
+resumen = { es = "Descarga archivos por torrent", en = "Download files via torrent" }
+descripcion = { es = "Cliente de torrents sencillo y sin publicidad, con control de velocidad y descargas programadas.", en = "Simple, ad-free torrent client with speed limits and scheduled downloads." }
+etiquetas = ["torrent", "descargas", "downloads", "p2p"]
+desktop = "org.qbittorrent.qBittorrent"
+
+[[app]]
+id = "localsend"
+nombre = "LocalSend"
+paquetes = ["localsend"]
+categoria = "internet"
+resumen = { es = "Envía archivos a tu celular o a otros equipos", en = "Send files to your phone or other computers" }
+descripcion = { es = "Comparte archivos con dispositivos de tu misma red Wi-Fi sin cables ni cuentas. Funciona con Android, iPhone, Windows y Mac.", en = "Share files with devices on your Wi-Fi without cables or accounts. Works with Android, iPhone, Windows and Mac." }
+etiquetas = ["compartir", "archivos", "wifi", "celular", "phone", "share"]
+recomendada = true
+desktop = "localsend"
+
+[[app]]
+id = "kdeconnect"
+nombre = "KDE Connect"
+paquetes = ["kdeconnect"]
+categoria = "internet"
+resumen = { es = "Conecta tu celular con tu computadora", en = "Link your phone with your computer" }
+descripcion = { es = "Recibe las notificaciones del celular en la computadora, comparte portapapeles y archivos, y usa el celular como control remoto.", en = "Get phone notifications on your computer, share clipboard and files, and use your phone as a remote." }
+etiquetas = ["celular", "phone", "android", "notificaciones", "conectar"]
+desktop = "org.kde.kdeconnect.app"
+
+# ---------------------------------------------------------------- Comunicación
+
+[[app]]
+id = "discord"
+nombre = "Discord"
+paquetes = ["discord"]
+categoria = "comunicacion"
+resumen = { es = "Chat de voz, vídeo y texto para comunidades", en = "Voice, video and text chat for communities" }
+descripcion = { es = "Habla y escribe con amigos o comunidades. Muy usado entre jugadores y grupos de estudio.", en = "Talk and chat with friends or communities. Popular among gamers and study groups." }
+etiquetas = ["chat", "voz", "gaming", "comunidad"]
+desktop = "discord"
+
+[[app]]
+id = "telegram"
+nombre = "Telegram"
+paquetes = ["telegram-desktop"]
+categoria = "comunicacion"
+resumen = { es = "Mensajería rápida con grupos y canales", en = "Fast messaging with groups and channels" }
+descripcion = { es = "La versión de escritorio de Telegram: mensajes, archivos grandes, grupos y canales, sincronizados con tu celular.", en = "The desktop version of Telegram: messages, large files, groups and channels, synced with your phone." }
+etiquetas = ["mensajes", "chat", "messaging"]
+desktop = "org.telegram.desktop"
+
+[[app]]
+id = "signal"
+nombre = "Signal"
+paquetes = ["signal-desktop"]
+categoria = "comunicacion"
+resumen = { es = "Mensajería privada y cifrada", en = "Private, encrypted messaging" }
+descripcion = { es = "Mensajes y llamadas cifrados de extremo a extremo. Se vincula con la app de Signal de tu celular.", en = "End-to-end encrypted messages and calls. Links with the Signal app on your phone." }
+etiquetas = ["mensajes", "privacidad", "privacy", "chat"]
+desktop = "signal"
+
+# ---------------------------------------------------------------- Oficina
+
+[[app]]
+id = "libreoffice"
+nombre = "LibreOffice"
+paquetes = ["libreoffice-fresh"]
+categoria = "oficina"
+resumen = { es = "Documentos, hojas de cálculo y presentaciones", en = "Documents, spreadsheets and presentations" }
+descripcion = { es = "La suite de oficina libre más completa. Abre y guarda archivos de Word, Excel y PowerPoint.", en = "The most complete free office suite. Opens and saves Word, Excel and PowerPoint files." }
+etiquetas = ["word", "excel", "powerpoint", "documentos", "office", "docs"]
+recomendada = true
+desktop = "libreoffice-startcenter"
+
+[[app]]
+id = "obsidian"
+nombre = "Obsidian"
+paquetes = ["obsidian"]
+categoria = "oficina"
+resumen = { es = "Notas enlazadas en Markdown", en = "Linked notes in Markdown" }
+descripcion = { es = "Guarda tus apuntes como archivos de texto y enlázalos entre sí para armar tu propia base de conocimiento.", en = "Keep your notes as text files and link them together to build your own knowledge base." }
+etiquetas = ["notas", "notes", "markdown", "apuntes"]
+desktop = "obsidian"
+
+[[app]]
+id = "xournalpp"
+nombre = "Xournal++"
+paquetes = ["xournalpp"]
+categoria = "oficina"
+resumen = { es = "Notas a mano y anotaciones en PDF", en = "Handwritten notes and PDF annotations" }
+descripcion = { es = "Escribe y dibuja a mano con una tableta o un lápiz digital, y anota encima de PDF.", en = "Write and draw by hand with a tablet or stylus, and annotate PDFs." }
+etiquetas = ["notas", "pdf", "tableta", "lápiz", "handwriting"]
+desktop = "com.github.xournalpp.xournalpp"
+
+[[app]]
+id = "okular"
+nombre = "Okular"
+paquetes = ["okular"]
+categoria = "oficina"
+resumen = { es = "Visor de PDF y libros electrónicos", en = "PDF and e-book viewer" }
+descripcion = { es = "Lee PDF, EPUB y otros documentos, con anotaciones, marcadores y búsqueda.", en = "Read PDF, EPUB and other documents with annotations, bookmarks and search." }
+etiquetas = ["pdf", "epub", "lector", "reader", "libros"]
+desktop = "org.kde.okular"
+
+# ---------------------------------------------------------------- Dibujo y fotografía
+
+[[app]]
+id = "gimp"
+nombre = "GIMP"
+paquetes = ["gimp"]
+categoria = "graficos"
+resumen = { es = "Edita y retoca fotografías", en = "Edit and retouch photos" }
+descripcion = { es = "El editor de imágenes libre más completo: retoque de fotos, recortes, filtros, capas y mucho más.", en = "The most complete free image editor: photo retouching, cropping, filters, layers and more." }
+etiquetas = ["fotos", "photoshop", "imagen", "image", "retoque"]
+recomendada = true
+desktop = "gimp"
+
+[[app]]
+id = "krita"
+nombre = "Krita"
+paquetes = ["krita"]
+categoria = "graficos"
+resumen = { es = "Pintura digital e ilustración", en = "Digital painting and illustration" }
+descripcion = { es = "Programa pensado para dibujar y pintar, con pinceles realistas, capas y animación básica.", en = "Made for drawing and painting, with realistic brushes, layers and basic animation." }
+etiquetas = ["dibujo", "pintar", "ilustración", "drawing", "painting"]
+recomendada = true
+desktop = "org.kde.krita"
+
+[[app]]
+id = "inkscape"
+nombre = "Inkscape"
+paquetes = ["inkscape"]
+categoria = "graficos"
+resumen = { es = "Diseño vectorial: logos e ilustraciones", en = "Vector design: logos and illustrations" }
+descripcion = { es = "Crea logotipos, iconos e ilustraciones que se pueden agrandar sin perder calidad.", en = "Create logos, icons and illustrations that scale up without losing quality." }
+etiquetas = ["vectorial", "logo", "svg", "illustrator", "diseño"]
+desktop = "org.inkscape.Inkscape"
+
+[[app]]
+id = "pinta"
+nombre = "Pinta"
+paquetes = ["pinta"]
+categoria = "graficos"
+resumen = { es = "Retoque rápido y sencillo de imágenes", en = "Quick and simple image editing" }
+descripcion = { es = "Un editor de imágenes ligero para recortar, dibujar y aplicar efectos sin complicaciones.", en = "A lightweight image editor to crop, draw and apply effects with no fuss." }
+etiquetas = ["imagen", "paint", "recortar", "image"]
+desktop = "pinta"
+
+[[app]]
+id = "libresprite"
+nombre = "LibreSprite"
+paquetes = ["libresprite"]
+categoria = "graficos"
+resumen = { es = "Pixel art y animaciones por fotogramas", en = "Pixel art and frame animations" }
+descripcion = { es = "Dibuja sprites y animaciones de pixel art para videojuegos o proyectos creativos.", en = "Draw pixel art sprites and animations for games or creative projects." }
+etiquetas = ["pixel", "sprite", "animación", "animation", "aseprite"]
+desktop = "libresprite"
+
+# ---------------------------------------------------------------- 3D y CAD
+
+[[app]]
+id = "blender"
+nombre = "Blender"
+paquetes = ["blender"]
+categoria = "3d"
+resumen = { es = "Modelado 3D, animación y render", en = "3D modeling, animation and rendering" }
+descripcion = { es = "Crea modelos y escenas en 3D, anímalos y genera imágenes o vídeos. Funciona mejor con tarjeta gráfica dedicada.", en = "Create 3D models and scenes, animate them and render images or video. Works best with a dedicated graphics card." }
+etiquetas = ["3d", "modelado", "animación", "render"]
+recomendada = true
+desktop = "blender"
+
+[[app]]
+id = "freecad"
+nombre = "FreeCAD"
+paquetes = ["freecad"]
+categoria = "3d"
+resumen = { es = "Diseño técnico y piezas en 3D", en = "Technical design and 3D parts" }
+descripcion = { es = "Diseña piezas y planos precisos para ingeniería, impresión 3D o arquitectura.", en = "Design precise parts and plans for engineering, 3D printing or architecture." }
+etiquetas = ["cad", "ingeniería", "impresión 3d", "planos", "engineering"]
+desktop = "org.freecad.FreeCAD"
+
+[[app]]
+id = "godot"
+nombre = "Godot"
+paquetes = ["godot"]
+categoria = "3d"
+resumen = { es = "Motor para crear videojuegos 2D y 3D", en = "Engine to make 2D and 3D games" }
+descripcion = { es = "Todo lo necesario para crear tu propio videojuego, desde juegos sencillos hasta proyectos grandes.", en = "Everything you need to make your own game, from simple ones to large projects." }
+etiquetas = ["videojuegos", "game", "engine", "motor", "gamedev"]
+desktop = "org.godotengine.Godot4"
+
+# ---------------------------------------------------------------- Música y vídeo
+
+[[app]]
+id = "vlc"
+nombre = "VLC"
+paquetes = ["vlc"]
+categoria = "multimedia"
+resumen = { es = "Reproduce casi cualquier vídeo o música", en = "Plays almost any video or music" }
+descripcion = { es = "El reproductor que abre prácticamente cualquier formato de audio y vídeo, incluso DVD y emisoras.", en = "The player that opens practically any audio and video format, including DVDs and streams." }
+etiquetas = ["video", "reproductor", "player", "peliculas", "movies", "música"]
+recomendada = true
+desktop = "vlc"
+
+[[app]]
+id = "mpv"
+nombre = "mpv"
+paquetes = ["mpv"]
+categoria = "multimedia"
+resumen = { es = "Reproductor de vídeo ligero y rápido", en = "Light and fast video player" }
+descripcion = { es = "Un reproductor minimalista y muy fluido, ideal para equipos modestos. Se controla sobre todo con el teclado.", en = "A minimalist, very smooth player, ideal for modest machines. Mostly keyboard-driven." }
+etiquetas = ["video", "reproductor", "player"]
+desktop = "mpv"
+
+[[app]]
+id = "spotify"
+nombre = "Spotify"
+paquetes = ["spotify"]
+categoria = "multimedia"
+resumen = { es = "Música en streaming", en = "Streaming music" }
+descripcion = { es = "Escucha millones de canciones y podcasts. Necesitas una cuenta de Spotify.", en = "Listen to millions of songs and podcasts. You need a Spotify account." }
+etiquetas = ["música", "music", "podcast", "canciones"]
+desktop = "spotify"
+
+[[app]]
+id = "obs"
+nombre = "OBS Studio"
+paquetes = ["obs-studio"]
+categoria = "multimedia"
+resumen = { es = "Graba tu pantalla o transmite en directo", en = "Record your screen or stream live" }
+descripcion = { es = "Graba tu pantalla, tu cámara y tu voz, o emite en directo a YouTube, Twitch y más.", en = "Record your screen, camera and voice, or stream live to YouTube, Twitch and more." }
+etiquetas = ["grabar", "pantalla", "stream", "directo", "record", "twitch"]
+desktop = "com.obsproject.Studio"
+
+[[app]]
+id = "kdenlive"
+nombre = "Kdenlive"
+paquetes = ["kdenlive"]
+categoria = "multimedia"
+resumen = { es = "Editor de vídeo completo", en = "Full-featured video editor" }
+descripcion = { es = "Monta vídeos con varias pistas, transiciones, efectos y subtítulos.", en = "Build videos with multiple tracks, transitions, effects and subtitles." }
+etiquetas = ["video", "editar", "montaje", "edit"]
+recomendada = true
+desktop = "org.kde.kdenlive"
+
+[[app]]
+id = "shotcut"
+nombre = "Shotcut"
+paquetes = ["shotcut"]
+categoria = "multimedia"
+resumen = { es = "Editor de vídeo rápido y ligero", en = "Fast, lightweight video editor" }
+descripcion = { es = "Un editor de vídeo más sencillo para cortar, unir y exportar tus clips.", en = "A simpler video editor to cut, join and export your clips." }
+etiquetas = ["video", "editar", "cortar", "edit"]
+desktop = "org.shotcut.Shotcut"
+
+[[app]]
+id = "audacity"
+nombre = "Audacity"
+paquetes = ["audacity"]
+categoria = "multimedia"
+resumen = { es = "Graba y edita audio", en = "Record and edit audio" }
+descripcion = { es = "Graba tu voz, limpia ruido, corta y mezcla pistas de sonido.", en = "Record your voice, remove noise, cut and mix audio tracks." }
+etiquetas = ["audio", "sonido", "podcast", "grabar", "sound"]
+desktop = "audacity"
+
+# ---------------------------------------------------------------- Juegos
+
+[[app]]
+id = "steam"
+nombre = "Steam"
+paquetes = ["steam"]
+categoria = "juegos"
+resumen = { es = "Tienda y biblioteca de videojuegos", en = "Game store and library" }
+descripcion = { es = "Compra, descarga y juega miles de títulos. Muchos juegos de Windows funcionan también en Linux.", en = "Buy, download and play thousands of titles. Many Windows games also run on Linux." }
+etiquetas = ["juegos", "games", "valve", "gaming"]
+recomendada = true
+desktop = "steam"
+
+# ---------------------------------------------------------------- Programación
+
+[[app]]
+id = "vscode"
+nombre = "Visual Studio Code"
+paquetes = ["visual-studio-code-bin"]
+categoria = "desarrollo"
+resumen = { es = "Editor de código muy popular", en = "Very popular code editor" }
+descripcion = { es = "Editor para escribir programas en casi cualquier lenguaje, con miles de extensiones.", en = "Editor to write programs in almost any language, with thousands of extensions." }
+etiquetas = ["código", "code", "editor", "programar", "ide"]
+recomendada = true
+desktop = "code"
+
+[[app]]
+id = "git"
+nombre = "Git"
+paquetes = ["git"]
+categoria = "desarrollo"
+resumen = { es = "Control de versiones para tu código", en = "Version control for your code" }
+descripcion = { es = "Guarda el historial de tus proyectos y colabora con otras personas. Omarchy lo necesita, por eso no se puede quitar.", en = "Keep your projects' history and collaborate with others. Omarchy needs it, so it can't be removed." }
+etiquetas = ["versiones", "github", "version control"]
+quitar = false
+
+[[app]]
+id = "lazygit"
+nombre = "Lazygit"
+paquetes = ["lazygit"]
+categoria = "desarrollo"
+resumen = { es = "Git con menús en la terminal", en = "Git with menus in the terminal" }
+descripcion = { es = "Maneja Git con atajos y menús en vez de recordar comandos.", en = "Drive Git with shortcuts and menus instead of remembering commands." }
+etiquetas = ["git", "terminal", "tui"]
+
+[[app]]
+id = "docker"
+nombre = "Docker"
+paquetes = ["docker", "docker-compose"]
+categoria = "desarrollo"
+resumen = { es = "Contenedores para ejecutar aplicaciones", en = "Containers to run applications" }
+descripcion = { es = "Ejecuta programas y servicios aislados, sin ensuciar tu sistema. Incluye Docker Compose.", en = "Run programs and services in isolation without cluttering your system. Includes Docker Compose." }
+etiquetas = ["contenedores", "containers", "devops", "compose"]
+
+[[app]]
+id = "lazydocker"
+nombre = "Lazydocker"
+paquetes = ["lazydocker"]
+categoria = "desarrollo"
+resumen = { es = "Panel de Docker en la terminal", en = "Docker dashboard in the terminal" }
+descripcion = { es = "Mira y controla tus contenedores de Docker desde una interfaz de terminal.", en = "View and control your Docker containers from a terminal interface." }
+etiquetas = ["docker", "contenedores", "terminal", "tui"]
+
+# ---------------------------------------------------------------- Utilidades
+
+[[app]]
+id = "fastfetch"
+nombre = "Fastfetch"
+paquetes = ["fastfetch"]
+categoria = "utilidades"
+resumen = { es = "Muestra la información de tu sistema", en = "Shows your system information" }
+descripcion = { es = "Escribe en la terminal un resumen vistoso de tu equipo: sistema, procesador, memoria y más.", en = "Prints a nice summary of your machine in the terminal: system, processor, memory and more." }
+etiquetas = ["sistema", "info", "neofetch", "system"]
+
+[[app]]
+id = "htop"
+nombre = "htop"
+paquetes = ["htop"]
+categoria = "utilidades"
+resumen = { es = "Mira qué consume tu equipo", en = "See what is using your computer" }
+descripcion = { es = "Muestra los programas en ejecución y cuánta memoria y procesador usa cada uno. Permite cerrar los que se traban.", en = "Shows running programs and how much memory and CPU each uses. Lets you close stuck ones." }
+etiquetas = ["procesos", "monitor", "rendimiento", "task manager", "memoria"]
+desktop = "htop"
+
+[[app]]
+id = "nwg-look"
+nombre = "nwg-look"
+paquetes = ["nwg-look"]
+categoria = "utilidades"
+resumen = { es = "Cambia el tema, los iconos y el cursor de las apps", en = "Change theme, icons and cursor of apps" }
+descripcion = { es = "Ajusta el aspecto de las aplicaciones GTK: tema, iconos, cursor y tipografía.", en = "Adjust how GTK apps look: theme, icons, cursor and font." }
+etiquetas = ["gtk", "tema", "iconos", "apariencia", "theme", "icons"]
+desktop = "nwg-look"
+
+# ---------------------------------------------------------------- Más apps de los repositorios
+
+[[app]]
+id = "chrome"
+nombre = "Google Chrome"
+paquetes = ["google-chrome"]
+categoria = "internet"
+resumen = { es = "El navegador de Google", en = "Google's web browser" }
+descripcion = { es = "Navegador muy extendido, ideal si usas servicios de Google o webs que solo funcionan bien con Chrome.", en = "A widely used browser, ideal if you use Google services or sites that only work well with Chrome." }
+etiquetas = ["navegador", "browser", "google", "web"]
+desktop = "google-chrome"
+
+[[app]]
+id = "brave"
+nombre = "Brave"
+paquetes = ["brave-bin"]
+categoria = "internet"
+resumen = { es = "Navegador que bloquea anuncios y rastreadores", en = "Browser that blocks ads and trackers" }
+descripcion = { es = "Navega sin anuncios ni rastreadores por defecto. Basado en Chromium, compatible con casi todas las páginas.", en = "Browse without ads or trackers by default. Chromium-based, compatible with almost every site." }
+etiquetas = ["navegador", "browser", "privacidad", "anuncios", "privacy", "ads"]
+desktop = "brave-browser"
+
+[[app]]
+id = "heroic"
+nombre = "Heroic Games Launcher"
+paquetes = ["heroic-games-launcher-bin"]
+categoria = "juegos"
+resumen = { es = "Tus juegos de Epic, GOG y Amazon", en = "Your Epic, GOG and Amazon games" }
+descripcion = { es = "Inicia sesión con tus cuentas de Epic Games, GOG o Amazon Games, y descarga y juega tu biblioteca desde Linux.", en = "Sign in with your Epic Games, GOG or Amazon Games accounts, then download and play your library on Linux." }
+etiquetas = ["juegos", "games", "epic", "gog", "launcher"]
+desktop = "heroic"
+
+[[app]]
+id = "cursor"
+nombre = "Cursor"
+paquetes = ["cursor-bin"]
+categoria = "desarrollo"
+resumen = { es = "Editor de código con asistente de IA", en = "Code editor with an AI assistant" }
+descripcion = { es = "Editor basado en Visual Studio Code con un asistente de inteligencia artificial integrado que ayuda a escribir y entender código.", en = "Visual Studio Code–based editor with a built-in AI assistant that helps write and understand code." }
+etiquetas = ["código", "code", "editor", "ia", "ai", "programar"]
+desktop = "cursor"
+
+# ================================================================ AUR (comunidad)
+# Paquetes que solo existen en el AUR. Los mantiene la comunidad, no Arch ni Omarchy.
+
+[[app]]
+id = "onlyoffice"
+nombre = "ONLYOFFICE"
+paquetes = ["onlyoffice-bin"]
+fuente = "aur"
+categoria = "oficina"
+resumen = { es = "Documentos, hojas y presentaciones, muy parecido a Office", en = "Documents, sheets and slides, very Office-like" }
+descripcion = { es = "Suite de oficina con un aspecto muy similar a Microsoft Office. Abre y guarda archivos de Word, Excel y PowerPoint con buena fidelidad.", en = "Office suite that looks very much like Microsoft Office. Opens and saves Word, Excel and PowerPoint files faithfully." }
+etiquetas = ["word", "excel", "powerpoint", "documentos", "office", "docs"]
+recomendada = true
+desktop = "onlyoffice-desktopeditors"
+
+[[app]]
+id = "genoffice"
+nombre = "genOffice"
+paquetes = ["genoffice-bin"]
+fuente = "aur"
+categoria = "oficina"
+resumen = { es = "Suite de oficina moderna con IA", en = "Modern office suite with AI" }
+descripcion = { es = "Editores de documentos, hojas, presentaciones, PDF y Markdown con funciones de inteligencia artificial.", en = "Document, sheet, slide, PDF and Markdown editors with AI features." }
+etiquetas = ["office", "documentos", "ia", "ai", "pdf", "markdown"]
+
+[[app]]
+id = "blockbench"
+nombre = "Blockbench"
+paquetes = ["blockbench-bin"]
+fuente = "aur"
+categoria = "3d"
+resumen = { es = "Modelado 3D sencillo para juegos y Minecraft", en = "Simple 3D modeling for games and Minecraft" }
+descripcion = { es = "Editor de modelos 3D de pocos polígonos, muy usado para crear modelos y animaciones para videojuegos y Minecraft.", en = "Low-poly 3D model editor, widely used to make models and animations for games and Minecraft." }
+etiquetas = ["3d", "minecraft", "low poly", "modelado", "voxel"]
+
+[[app]]
+id = "slack"
+nombre = "Slack"
+paquetes = ["slack-desktop"]
+fuente = "aur"
+categoria = "comunicacion"
+resumen = { es = "Mensajería para equipos de trabajo", en = "Messaging for work teams" }
+descripcion = { es = "Chat de trabajo con canales, mensajes directos y llamadas. Necesitas ser parte de un espacio de Slack.", en = "Work chat with channels, direct messages and calls. You need to belong to a Slack workspace." }
+etiquetas = ["chat", "trabajo", "work", "equipo", "team"]
+desktop = "slack"
+
+[[app]]
+id = "zoom"
+nombre = "Zoom"
+paquetes = ["zoom"]
+fuente = "aur"
+categoria = "comunicacion"
+resumen = { es = "Videollamadas y reuniones en línea", en = "Video calls and online meetings" }
+descripcion = { es = "Entra a reuniones, clases o llamadas por vídeo con el cliente oficial de Zoom.", en = "Join meetings, classes or video calls with the official Zoom client." }
+etiquetas = ["videollamada", "reunion", "meeting", "video", "clases"]
+recomendada = true
+
+[[app]]
+id = "vesktop"
+nombre = "Vesktop"
+paquetes = ["vesktop-bin"]
+fuente = "aur"
+categoria = "comunicacion"
+resumen = { es = "Discord más fluido en Linux", en = "A smoother Discord on Linux" }
+descripcion = { es = "Cliente alternativo de Discord que funciona mejor en Linux, con compartir pantalla y audio incluidos.", en = "Alternative Discord client that works better on Linux, with screen and audio sharing included." }
+etiquetas = ["discord", "chat", "voz", "gaming"]
+
+[[app]]
+id = "stremio"
+nombre = "Stremio"
+paquetes = ["stremio"]
+fuente = "aur"
+categoria = "multimedia"
+resumen = { es = "Películas y series en un solo lugar", en = "Movies and series in one place" }
+descripcion = { es = "Reúne películas, series y televisión en directo de distintos servicios en una sola aplicación.", en = "Brings movies, series and live TV from several services into a single app." }
+etiquetas = ["peliculas", "series", "movies", "tv", "streaming"]
+recomendada = true
+
+[[app]]
+id = "postman"
+nombre = "Postman"
+paquetes = ["postman-bin"]
+fuente = "aur"
+categoria = "desarrollo"
+resumen = { es = "Prueba y documenta APIs", en = "Test and document APIs" }
+descripcion = { es = "Herramienta para enviar peticiones a servicios web, probar APIs y documentarlas.", en = "Tool to send requests to web services, test APIs and document them." }
+etiquetas = ["api", "http", "rest", "desarrollo", "developer"]
+
+[[app]]
+id = "etcher"
+nombre = "balenaEtcher"
+paquetes = ["balena-etcher"]
+fuente = "aur"
+categoria = "utilidades"
+resumen = { es = "Graba un sistema en una memoria USB", en = "Write an OS image to a USB drive" }
+descripcion = { es = "Prepara una memoria USB con Linux u otro sistema para instalarlo en otro equipo, con comprobación de que quedó bien.", en = "Prepare a USB drive with Linux or another system to install it on another computer, with a check that it came out right." }
+etiquetas = ["usb", "iso", "instalar", "pendrive", "flash"]
+recomendada = true

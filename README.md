@@ -1,7 +1,7 @@
 # Lizarbe Ajustes — Escritorio, Widgets y Estudio de temas
 
 > Configuración de [Omarchy](https://omarchy.org) por interfaz TUI, sin editar archivos de texto.
-> Este repositorio es un *workspace* de Rust con tres aplicaciones y un núcleo compartido. Los
+> Este repositorio es un *workspace* de Rust con cuatro aplicaciones y un núcleo compartido. Los
 > usuarios lo reciben con el paquete `lizarbe-ajustes` del repositorio de Lizarbe y se actualiza
 > con `omarchy update`.
 
@@ -10,6 +10,7 @@
 | **Escritorio** | `lizarbe-escritorio` | Configuración › Pantallas, Atajos de teclado, Teclado, Luz nocturna, Capturas, Atajos de texto, Idioma, Inicio automático · Apariencia › Hyprland |
 | **Widgets** | `lizarbe-widgets` | Apariencia › Widgets y barra · Configuración › Plugins |
 | **Estudio de temas** | `lizarbe-temas` | Apariencia › Crear tema |
+| **Tienda** | `lizarbe-tienda` | Instalar › Paquete y Instalar › AUR (misma pantalla; cambia solo la fuente) |
 
 *[English below](#english)*
 
@@ -67,6 +68,26 @@ Si mueves widgets en la propia barra con la app abierta, se detecta y se recarga
 
 ```bash
 lizarbe-widgets --section plugins       # bar, widgets, plugins, idle, appearance, changes
+```
+
+## Tienda
+
+Instalar programas como en una tienda, sin saber el nombre del paquete: categorías, descripciones en
+tu idioma, búsqueda por lo que quieres hacer ("música", "editar vídeo") y marcar varias apps para
+instalarlas de una vez. Es la pantalla que se abre en Instalar › Paquete (repositorios oficiales) y en
+Instalar › AUR (programas de la comunidad, que se compilan en el equipo): el menú de Omarchy no cambia,
+solo lo que se abre. La tecla `a` lleva al buscador de siempre (fzf) de la fuente en la que estás, para
+quien ya sabe qué paquete quiere.
+
+El catálogo es `crates/tienda/catalogo.toml` (se embebe en el binario). Para añadir una app basta una
+entrada `[[app]]` (`fuente = "aur"` para las del AUR; por defecto son de los repos).
+`cargo test -p lizarbe-tienda -- --ignored` comprueba, con internet, que sus paquetes existen en su fuente.
+
+```bash
+lizarbe-tienda --fuente aur             # abrir el modo AUR (por defecto: repos)
+lizarbe-tienda --categoria multimedia   # abrir en una categoría (o recomendadas, instaladas)
+lizarbe-tienda --app obs                # abrir seleccionando una app
+lizarbe-tienda --buscar "editar video"  # abrir con una búsqueda
 ```
 
 ## Estudio de temas
@@ -158,6 +179,7 @@ Los paquetes se construyen y publican desde
 - `crates/escritorio/` — catálogo de opciones, `escritorio.lua`, atajos, capturas, inicio, luz nocturna…
 - `crates/widgets/` — `shell.json`/`shell.toml`, plugins y la vista de la barra.
 - `crates/temas/` — borrador del tema, maqueta, paletas (acento y k-means), imágenes y pruebas en vivo.
+- `crates/tienda/` — catálogo curado (`catalogo.toml`), consultas a pacman y la interfaz de la tienda.
 
 ### Estilo visual
 
@@ -169,7 +191,7 @@ y botones de texto con su tecla (`[A] Aplicar  [Q] Cerrar`).
 
 ## English
 
-Three TUI apps to configure [Omarchy](https://omarchy.org) without editing files, shipped as the
+Four TUI apps (three to configure [Omarchy](https://omarchy.org) without editing files, shipped as the
 `lizarbe-ajustes` package and updated with `omarchy update`:
 
 - **Escritorio** (`lizarbe-escritorio`): Hyprland — appearance, windows, monitors, keyboard,
@@ -180,7 +202,12 @@ Three TUI apps to configure [Omarchy](https://omarchy.org) without editing files
 - **Theme studio** (`lizarbe-temas`): create and edit complete Omarchy themes with a live mock-up,
   palettes generated from an accent or a wallpaper, wallpapers, icons, editors and bar colors, and
   a **try on the desktop** mode that reverts after 20 s unless confirmed.
+- **App Store** (`lizarbe-tienda`): browse and install apps by category with descriptions in your
+  language, search by what you want to do, and mark several apps to install at once. It is the
+  screen opened by Install › Package (official repos) and Install › AUR (community programs built on
+  your computer); the Omarchy menu itself is unchanged, only what it opens. Key `a` goes to the
+  classic fuzzy finder for the current source. The curated catalog is `crates/tienda/catalogo.toml`.
 
-All three share the same keys and mouse behaviour: `/` or `Ctrl+F` searches every option and
+All four share the same keys and mouse behaviour: `/` or `Ctrl+F` searches every option and
 jumps to it, right-click opens a context menu, `?` shows help. Common options: `--lang <es|en>`,
 `--config-dir <dir>` (test mode), `--help`, `--version`. Development: `./install.sh`, `cargo test`.

@@ -1,0 +1,15 @@
+[package]
+name = "lizarbe-tienda"
+description = "Tienda de aplicaciones de Lizarbe: busca e instala programas por categorías, sin saber el nombre del paquete"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+lizarbe-core.workspace = true
+anyhow.workspace = true
+ratatui.workspace = true
+serde.workspace = true
+toml.workspace = true
+unicode-width.workspace = true
