@@ -3,6 +3,7 @@
 //! barra de título y barra de estado con atajos que se ocultan por prioridad.
 
 use ratatui::Frame;
+use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -117,143 +118,113 @@ pub fn fold(s: &str) -> String {
         .collect()
 }
 
-// ---------------------------------------------------------------- relieve 3D
+// ---------------------------------------------------------------- piezas planas
 
-/// Caja en relieve de 3 líneas, como los controles de Meca:
-/// `┌───┐` / `┃ x │` / `┗━━━┙`. El borde izquierdo e inferior hacen de
-/// sombra (acento al estar activo).
-#[allow(clippy::too_many_arguments)]
-pub fn bevel_box(
-    f: &mut Frame,
-    x: u16,
-    y: u16,
-    inner: Vec<Span<'static>>,
-    inner_w: usize,
-    border: Color,
-    shadow: Color,
-    bold: bool,
-) {
-    let b = if bold {
-        Style::new().fg(border).add_modifier(Modifier::BOLD)
-    } else {
-        fg(border)
-    };
-    let sh = Style::new().fg(shadow).add_modifier(Modifier::BOLD);
-    put(
-        f,
-        x,
-        y,
-        vec![Span::styled(format!("┌{}┐", "─".repeat(inner_w)), b)],
-    );
-    let mut mid = vec![Span::styled("┃", sh)];
-    mid.extend(inner);
-    mid.push(Span::styled("│", b));
-    put(f, x, y + 1, mid);
-    put(
-        f,
-        x,
-        y + 2,
-        vec![Span::styled(format!("┗{}┙", "━".repeat(inner_w)), sh)],
-    );
-}
-
-/// Colores de un control según esté seleccionado o bajo el ratón.
-pub struct Tone {
-    pub border: Color,
-    pub shadow: Color,
-    pub bg: Option<Color>,
-    pub bold: bool,
-}
-
-pub fn tone(pal: &Palette, selected: bool, hover: bool) -> Tone {
-    if hover {
-        Tone {
-            border: pal.accent,
-            shadow: pal.accent,
-            bg: Some(pal.soft_hover),
-            bold: true,
-        }
-    } else if selected {
-        Tone {
-            border: pal.bright,
-            shadow: pal.accent,
-            bg: Some(pal.soft_selection),
-            bold: true,
-        }
-    } else {
-        Tone {
-            border: pal.fg,
-            shadow: pal.muted,
-            bg: None,
-            bold: false,
-        }
+/// Línea horizontal fina de `w` celdas.
+pub fn rule_h(f: &mut Frame, x: u16, y: u16, w: u16, color: Color) {
+    if w > 0 {
+        put(
+            f,
+            x,
+            y,
+            vec![Span::styled("─".repeat(w as usize), fg(color))],
+        );
     }
 }
 
-pub fn inner_style(pal: &Palette, tn: &Tone) -> Style {
-    let mut s = Style::new().fg(pal.bright);
-    if let Some(bg) = tn.bg {
-        s = s.bg(bg);
+/// Línea vertical fina de `h` celdas.
+pub fn rule_v(f: &mut Frame, x: u16, y: u16, h: u16, color: Color) {
+    for dy in 0..h {
+        put(f, x, y + dy, vec![Span::styled("│", fg(color))]);
     }
-    if tn.bold {
-        s = s.add_modifier(Modifier::BOLD);
-    }
-    s
 }
 
-/// Aspecto de un botón en relieve: (borde, sombra, estilo del texto).
-pub fn button_look(
+/// "ESCRITORIO" → "E S C R I T O R I O" (las palabras se separan con tres espacios).
+pub fn spaced(s: &str) -> String {
+    s.to_uppercase()
+        .split_whitespace()
+        .map(|w| w.chars().map(String::from).collect::<Vec<_>>().join(" "))
+        .collect::<Vec<_>>()
+        .join("   ")
+}
+
+/// Texto de una tecla para mostrar en un botón: "A", "⏎", "Esc"…
+pub fn key_text(code: KeyCode) -> String {
+    match code {
+        KeyCode::Enter => "⏎".into(),
+        KeyCode::Esc => "Esc".into(),
+        KeyCode::Tab => "Tab".into(),
+        KeyCode::Delete => "Supr".into(),
+        KeyCode::Char(' ') => "Espacio".into(),
+        KeyCode::Char(c) => c.to_uppercase().to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Ancho de un botón de texto `[K] etiqueta`.
+pub fn button_width(key: &str, label: &str) -> usize {
+    key.width() + 3 + label.width()
+}
+
+/// Botón de texto `[K] etiqueta`: la tecla en acento, la etiqueta en el tono
+/// normal; el principal en negrita y el que tiene el ratón o el foco subrayado.
+pub fn button_spans(
     pal: &Palette,
+    key: &str,
+    label: &str,
     enabled: bool,
-    hover: bool,
-    selected: bool,
     primary: bool,
-) -> (Color, Color, Style) {
+    lit: bool,
+) -> Vec<Span<'static>> {
     if !enabled {
-        (pal.dim, pal.dim, fg(pal.dim))
-    } else if hover {
-        (
-            pal.accent,
-            pal.accent,
-            Style::new()
-                .fg(pal.bright)
-                .bg(pal.soft_hover)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else if selected {
-        (
-            pal.bright,
-            pal.accent,
-            Style::new()
-                .fg(pal.bright)
-                .bg(pal.soft_selection)
-                .add_modifier(Modifier::BOLD),
-        )
-    } else if primary {
-        (
-            pal.bright,
-            pal.accent,
-            fg(pal.bright).add_modifier(Modifier::BOLD),
-        )
-    } else {
-        (pal.fg, pal.muted, fg(pal.fg))
+        return vec![Span::styled(format!("[{key}] {label}"), fg(pal.dim))];
     }
+    let mut text = if primary || lit {
+        fg(pal.bright).add_modifier(Modifier::BOLD)
+    } else {
+        fg(pal.fg)
+    };
+    if lit {
+        text = text.add_modifier(Modifier::UNDERLINED);
+    }
+    vec![
+        Span::styled("[", fg(pal.muted)),
+        Span::styled(key.to_string(), fg(pal.accent).add_modifier(Modifier::BOLD)),
+        Span::styled("] ", fg(pal.muted)),
+        Span::styled(label.to_string(), text),
+    ]
 }
 
-/// Estilo de una fila de lista: bajo el ratón, seleccionada o normal.
+/// Fila de una lista: marca `▍` en acento si es la elegida; texto en negrita
+/// si está elegida o bajo el ratón. `width` incluye la marca.
+pub fn list_row(
+    pal: &Palette,
+    text: &str,
+    width: usize,
+    selected: bool,
+    hover: bool,
+    enabled: bool,
+) -> Vec<Span<'static>> {
+    let style = row_style(pal, hover, selected, enabled);
+    vec![
+        Span::styled(
+            if selected && enabled { "▍" } else { " " },
+            fg(pal.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(pad(text, width.saturating_sub(1)), style),
+    ]
+}
+
+/// Estilo de una fila de lista: sin fondos; el tono y el subrayado marcan el estado.
 pub fn row_style(pal: &Palette, hover: bool, selected: bool, enabled: bool) -> Style {
     if !enabled {
         fg(pal.dim)
     } else if hover {
         Style::new()
             .fg(pal.bright)
-            .bg(pal.soft_hover)
-            .add_modifier(Modifier::BOLD)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
     } else if selected {
-        Style::new()
-            .fg(pal.bright)
-            .bg(pal.soft_selection)
-            .add_modifier(Modifier::BOLD)
+        Style::new().fg(pal.bright).add_modifier(Modifier::BOLD)
     } else {
         fg(pal.fg)
     }
@@ -273,15 +244,15 @@ pub fn centered(area: Rect, w: u16, h: u16) -> Rect {
     )
 }
 
-/// Ventana con marco de acento y título; devuelve el área interior.
+/// Ventana con marco fino redondeado y título en mayúsculas; devuelve el área interior.
 pub fn frame(f: &mut Frame, pal: &Palette, r: Rect, title: &str) -> Rect {
     f.render_widget(Clear, r);
     let block = Block::new()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(fg(pal.accent))
+        .border_type(BorderType::Rounded)
+        .border_style(fg(pal.rule))
         .title(Span::styled(
-            format!(" {title} "),
+            format!(" {} ", title.to_uppercase()),
             fg(pal.bright).add_modifier(Modifier::BOLD),
         ));
     let inner = block.inner(r);
@@ -291,41 +262,12 @@ pub fn frame(f: &mut Frame, pal: &Palette, r: Rect, title: &str) -> Rect {
 
 // ---------------------------------------------------------------- barras
 
-/// Barra de título en color de acento: `left` a la izquierda (o `left_short`
-/// si no cabe) y `parts` separadas por `│` a la derecha.
-pub fn header_bar(
-    f: &mut Frame,
-    pal: &Palette,
-    area: Rect,
-    left: &str,
-    left_short: &str,
-    parts: &[String],
-) {
-    let style = Style::new()
-        .fg(pal.bright)
-        .bg(pal.accent)
-        .add_modifier(Modifier::BOLD);
-    let mut right = format!(" {} ", parts.join(" │ "));
-    let w = area.width as usize;
-    let left = if left.width() + right.width() > w {
-        left_short
-    } else {
-        left
-    };
-    if left.width() + right.width() > w {
-        right = String::new();
-    }
-    let space = w.saturating_sub(left.width() + right.width());
-    let line = format!("{left}{}{right}", " ".repeat(space));
-    f.render_widget(Line::from(Span::styled(truncate(&line, w), style)), area);
-}
-
 /// Atajo de la barra de estado: (tecla, descripción, prioridad). Con poco
 /// ancho se ocultan primero los de prioridad más baja.
 pub type Hint = (String, String, u8);
 
-/// Barra de estado: `status` a la izquierda y los atajos que quepan a la
-/// derecha.
+/// Barra de estado sin relleno: `status` a la izquierda y los atajos que
+/// quepan a la derecha (`tecla descripción · tecla descripción`).
 pub fn status_bar(
     f: &mut Frame,
     pal: &Palette,
@@ -334,24 +276,18 @@ pub fn status_bar(
     bold: bool,
     hints: &[Hint],
 ) {
-    let base = Style::new().fg(pal.bright).bg(pal.soft_muted);
-    let status_style = if bold {
-        base.add_modifier(Modifier::BOLD)
-    } else {
-        base
-    };
-    let render = |h: &[&Hint]| -> String {
-        if h.is_empty() {
-            return String::new();
-        }
-        let parts: Vec<String> = h.iter().map(|(k, d, _)| format!("{k}: {d}")).collect();
-        format!(" {} ", parts.join(" │ "))
+    let render = |h: &[&Hint]| -> usize {
+        h.iter()
+            .map(|(k, d, _)| k.width() + 1 + d.width())
+            .sum::<usize>()
+            + 5 * h.len().saturating_sub(1)
     };
     let mut keep: Vec<&Hint> = hints.iter().collect();
     let width = area.width as usize;
-    let budget = width.saturating_sub(status.width().min(width / 2) + 1);
+    let status_w = status.width().min(width / 2);
+    let budget = width.saturating_sub(status_w + 6);
     for prio in 0..4u8 {
-        while render(&keep).width() > budget {
+        while render(&keep) > budget {
             match keep.iter().position(|h| h.2 == prio) {
                 Some(i) => {
                     keep.remove(i);
@@ -360,15 +296,29 @@ pub fn status_bar(
             }
         }
     }
-    let right = render(&keep);
-    let left_w = width.saturating_sub(right.width());
-    f.render_widget(
-        Line::from(vec![
-            Span::styled(pad(status, left_w), status_style),
-            Span::styled(right, base),
-        ]),
-        area,
+    let status_style = if bold {
+        fg(pal.bright).add_modifier(Modifier::BOLD)
+    } else {
+        fg(pal.muted)
+    };
+    put(
+        f,
+        area.x + 2,
+        area.y,
+        vec![Span::styled(truncate(status, status_w), status_style)],
     );
+    let mut spans: Vec<Span> = vec![];
+    for (n, (k, d, _)) in keep.iter().enumerate() {
+        if n > 0 {
+            spans.push(Span::styled("  ·  ", fg(pal.rule)));
+        }
+        spans.push(Span::styled(k.clone(), fg(pal.fg)));
+        spans.push(Span::styled(format!(" {d}"), fg(pal.muted)));
+    }
+    let w = render(&keep) as u16;
+    if w > 0 {
+        put(f, area.right().saturating_sub(w + 2), area.y, spans);
+    }
 }
 
 #[cfg(test)]

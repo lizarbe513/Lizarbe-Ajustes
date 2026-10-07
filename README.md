@@ -91,6 +91,20 @@ Esto es solo para desarrollo (los usuarios reciben el paquete `lizarbe-ajustes`)
 
 Desinstalar: `./uninstall.sh` (no toca tu configuración de Omarchy).
 
+## Estilo visual
+
+Minimalismo editorial: sin bloques rellenos ni marcos de color, con líneas finas, mucho aire y un solo acento.
+
+- **Rejilla:** una línea vertical entre el menú y el contenido y una horizontal sobre los botones (se cruzan en `┴`).
+- **Tipografía:** nombre de la app en mayúsculas espaciadas, títulos en MAYÚSCULAS, descripciones atenuadas, etiquetas en frase normal.
+- **Estado:** se ve con una marca `▍`, el tono del texto y el subrayado; nunca solo con el color. El acento (rojo) marca solo lo activo.
+- **Controles planos:** `━━●` interruptor, `‹ 6 ›` pasos, `━━━●───` deslizador, `valor ▾` listas.
+- **Botones de texto con su tecla:** `[A] Aplicar  [C] Cancelar  [R] Restaurar  [Q] Cerrar`. La tecla mostrada es la que funciona (también `Ctrl+W` y `Esc` cierran).
+- **Colores:** salen del tema activo de Omarchy; si el atenuado no contrasta lo bastante con el fondo, se acerca al texto (`ensure_contrast`, en `crates/core/src/theme.rs`). El tema `lizarbe-arena` (paquete `lizarbe-tema`) trae la paleta arena + rojo.
+- **Vista previa sin abrir ventana:** `cargo test -p lizarbe-escritorio dump_screens -- --ignored --nocapture` imprime todas las pantallas como texto.
+
+El dibujo vive en `crates/core/src/{theme,ui,view,modal}.rs` y lo comparten Escritorio y Widgets.
+
 ## 🕹️ Uso
 
 ```bash

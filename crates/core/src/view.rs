@@ -1,6 +1,9 @@
 //! Piezas de interfaz compartidas por las aplicaciones: contexto de dibujo
-//! (paleta, ratón y zonas clicables), formularios con controles en relieve,
-//! fila de botones Restaurar · Cancelar · Aplicar y barra lateral.
+//! (paleta, ratón y zonas clicables), cabecera, formularios con controles
+//! planos, botones de texto `[A] Aplicar` y barra lateral.
+//!
+//! Estilo: minimalismo editorial. Sin bloques rellenos: el estado se marca con
+//! `▍`, con el tono del texto y con el subrayado; un solo acento; líneas finas.
 
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -14,7 +17,7 @@ use crate::i18n::t;
 use crate::schema::{self, Kind, value_label};
 use crate::theme::{Palette, hex};
 use crate::ui::{
-    bevel_box, button_look, center, fg, inner_style, pad, put, right_align, tone, truncate, wrap,
+    button_spans, button_width, center, fg, put, right_align, rule_h, spaced, truncate, wrap,
 };
 
 /// Parte de un control sobre la que está el ratón.
@@ -33,6 +36,7 @@ pub trait CoreHit: Copy + PartialEq {
     fn ctrl(i: usize, sub: Sub) -> Self;
     fn button(i: usize) -> Self;
     fn sidebar(i: usize) -> Self;
+    fn close() -> Self;
     fn mode_toggle() -> Self;
     fn lang_toggle() -> Self;
     fn popup_item(i: usize) -> Self;
@@ -68,9 +72,93 @@ impl<H: Copy + PartialEq> Ctx<'_, H> {
     }
 }
 
-// ---------------------------------------------------------------- encabezado
+// ---------------------------------------------------------------- cabecera
 
-/// Título de sección en mayúsculas, descripción y separador (3 líneas).
+/// Cabecera de una línea, sin relleno: el nombre de la aplicación espaciado a
+/// la izquierda; a la derecha lo secundario (`parts`, atenuado), los cambios
+/// pendientes (acento) y el botón `[Q] Cerrar`.
+#[allow(clippy::too_many_arguments)]
+pub fn draw_header<H: CoreHit>(
+    f: &mut Frame,
+    ctx: &mut Ctx<H>,
+    area: Rect,
+    name: &str,
+    subtitle: &str,
+    parts: &[String],
+    pending: Option<&str>,
+    close: (&str, &str),
+) {
+    let pal = ctx.pal;
+    let w = area.width as usize;
+    let close_w = button_width(close.0, close.1);
+    let mut right_w = close_w + 2;
+    let parts_text = parts.join("  ·  ");
+    let pend_w = pending.map_or(0, |p| p.width() + 5);
+    let mut show_parts = true;
+    let mut show_pending = pending.is_some();
+    let left = spaced(name);
+    let sub = if subtitle.is_empty() {
+        String::new()
+    } else {
+        format!("   ·   {subtitle}")
+    };
+    // Lo que no cabe se quita por prioridad: subtítulo, ajustes, cambios.
+    let need = |parts_on: bool, pend_on: bool| {
+        2 + left.width()
+            + right_w
+            + if parts_on { parts_text.width() + 5 } else { 0 }
+            + if pend_on { pend_w } else { 0 }
+    };
+    let mut show_sub = need(true, true) + sub.width() <= w;
+    if !show_sub && need(true, true) > w {
+        show_parts = false;
+        if need(false, true) > w {
+            show_pending = false;
+        }
+    }
+    if !show_parts && !show_pending && 2 + left.width() + right_w > w {
+        right_w = 0;
+        show_sub = false;
+    }
+    let mut spans = vec![Span::styled(
+        left.clone(),
+        fg(pal.accent).add_modifier(Modifier::BOLD),
+    )];
+    if show_sub {
+        spans.push(Span::styled(sub, fg(pal.muted)));
+    }
+    put(f, area.x + 2, area.y, spans);
+
+    let mut x = area.right().saturating_sub(right_w as u16);
+    if right_w > 0 {
+        let hit = H::close();
+        let lit = ctx.hovered(hit);
+        let spans = button_spans(pal, close.0, close.1, true, false, lit);
+        put(f, x, area.y, spans);
+        ctx.hit(Rect::new(x, area.y, close_w as u16, 1), hit);
+    }
+    if show_pending && let Some(p) = pending {
+        let pw = (p.width() + 5) as u16;
+        x = x.saturating_sub(pw);
+        put(
+            f,
+            x,
+            area.y,
+            vec![Span::styled(
+                format!("• {p}"),
+                fg(pal.accent).add_modifier(Modifier::BOLD),
+            )],
+        );
+    }
+    if show_parts {
+        let pw = (parts_text.width() + 5) as u16;
+        x = x.saturating_sub(pw);
+        put(f, x, area.y, vec![Span::styled(parts_text, fg(pal.muted))]);
+    }
+}
+
+/// Título de sección en mayúsculas y su descripción (hasta dos líneas), más una
+/// línea en blanco. Devuelve cuántas líneas ocupa en total.
 pub fn section_header(
     f: &mut Frame,
     pal: &Palette,
@@ -78,12 +166,11 @@ pub fn section_header(
     title: &str,
     desc: &str,
     focused: bool,
-) {
-    let x = area.x;
+) -> u16 {
     let w = area.width as usize;
     put(
         f,
-        x,
+        area.x,
         area.y,
         vec![
             Span::styled(
@@ -91,39 +178,43 @@ pub fn section_header(
                 fg(pal.accent).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                truncate(&title.to_uppercase(), w.saturating_sub(1)),
+                format!(" {}", truncate(&title.to_uppercase(), w.saturating_sub(2))),
                 fg(pal.bright).add_modifier(Modifier::BOLD),
             ),
         ],
     );
-    put(
-        f,
-        x,
-        area.y + 1,
-        vec![Span::styled(
-            truncate(&format!(" {desc}"), w),
-            fg(pal.muted),
-        )],
-    );
-    put(
-        f,
-        x,
-        area.y + 2,
-        vec![Span::styled("─".repeat(w), fg(pal.muted))],
-    );
+    let mut lines = wrap(desc, w.saturating_sub(4));
+    if lines.len() > 2 {
+        lines.truncate(2);
+        if let Some(last) = lines.last_mut() {
+            *last = truncate(&format!("{last}…"), w.saturating_sub(4));
+        }
+    }
+    for (n, l) in lines.iter().enumerate() {
+        put(
+            f,
+            area.x + 2,
+            area.y + 1 + n as u16,
+            vec![Span::styled(l.clone(), fg(pal.muted))],
+        );
+    }
+    1 + lines.len() as u16 + 1
 }
 
 // ---------------------------------------------------------------- botones
 
-/// Botón de la fila inferior.
+/// Botón de la fila inferior: `[tecla] etiqueta`.
 pub struct ButtonSpec {
     pub label: String,
+    /// Tecla que lo activa, como se muestra: "A", "⏎"…
+    pub key: String,
     pub enabled: bool,
     pub primary: bool,
 }
 
-/// Fila de botones en relieve alineados a la derecha, con `status` a la
-/// izquierda. `selected` es el botón con el foco del teclado.
+/// Fila de botones de texto a la izquierda, con `status` a la derecha.
+/// `selected` es el botón con el foco del teclado. Ocupa la primera línea
+/// de `area` (la línea fina de encima la dibuja la aplicación con `rule_h`).
 pub fn draw_buttons<H: CoreHit>(
     f: &mut Frame,
     ctx: &mut Ctx<H>,
@@ -132,47 +223,40 @@ pub fn draw_buttons<H: CoreHit>(
     selected: Option<usize>,
     status: (&str, Color),
 ) {
-    let gap = 2u16;
-    let total: u16 = buttons
-        .iter()
-        .map(|b| b.label.width() as u16 + 2)
-        .sum::<u16>()
-        + gap * (buttons.len() as u16).saturating_sub(1);
-    let start = area.right().saturating_sub(total + 1);
-
-    let status_w = start.saturating_sub(area.x + 1) as usize;
-    if status_w > 6 {
-        put(
-            f,
-            area.x,
-            area.y + 1,
-            vec![Span::styled(
-                truncate(&format!(" {}", status.0), status_w),
-                fg(status.1),
-            )],
-        );
-    }
-
-    let mut x = start;
+    let gap = 3u16;
+    let mut x = area.x + 2;
+    let mut used = 2u16;
     for (i, b) in buttons.iter().enumerate() {
-        let inner_w = b.label.width();
+        let w = button_width(&b.key, &b.label) as u16;
         let hit = H::button(i);
-        let hover = ctx.hovered(hit);
-        let sel = selected == Some(i);
-        let primary = b.primary && b.enabled;
-        let (border, shadow, text) = button_look(ctx.pal, b.enabled, hover, sel, primary);
-        bevel_box(
+        let lit = b.enabled && (ctx.hovered(hit) || selected == Some(i));
+        put(
             f,
             x,
             area.y,
-            vec![Span::styled(b.label.clone(), text)],
-            inner_w,
-            border,
-            shadow,
-            sel || primary || hover,
+            button_spans(
+                ctx.pal,
+                &b.key,
+                &b.label,
+                b.enabled,
+                b.primary && b.enabled,
+                lit,
+            ),
         );
-        ctx.hit(Rect::new(x, area.y, inner_w as u16 + 2, 3), hit);
-        x += inner_w as u16 + 2 + gap;
+        ctx.hit(Rect::new(x, area.y, w, 1), hit);
+        x += w + gap;
+        used += w + gap;
+    }
+    let room = (area.width.saturating_sub(used + 2)) as usize;
+    if room > 6 && !status.0.is_empty() {
+        let text = truncate(status.0, room);
+        let tw = text.width() as u16;
+        put(
+            f,
+            area.right().saturating_sub(tw + 2),
+            area.y,
+            vec![Span::styled(text, fg(status.1))],
+        );
     }
 }
 
@@ -193,8 +277,9 @@ pub struct SideToggle<H> {
     pub value: String,
 }
 
-/// Barra lateral por categorías. Las entradas se numeran en orden de
-/// aparición para `H::sidebar(i)`. `active`: el foco está en la barra.
+/// Barra lateral por categorías, sin caja: el encabezado de cada categoría en
+/// mayúsculas atenuadas y la entrada activa con `▍`. Las entradas se numeran
+/// en orden de aparición para `H::sidebar(i)`. `active`: el foco está en la barra.
 pub fn draw_sidebar<H: CoreHit>(
     f: &mut Frame,
     ctx: &mut Ctx<H>,
@@ -205,7 +290,7 @@ pub fn draw_sidebar<H: CoreHit>(
 ) {
     let w = area.width as usize;
     let pal = ctx.pal;
-    let mut y = area.y;
+    let mut y = area.y + 1;
     let mut index = 0;
     for (n, (cat, items)) in categories.iter().enumerate() {
         if n > 0 {
@@ -216,10 +301,10 @@ pub fn draw_sidebar<H: CoreHit>(
         }
         put(
             f,
-            area.x,
+            area.x + 2,
             y,
             vec![Span::styled(
-                pad(&format!(" {}", cat.to_uppercase()), w),
+                truncate(&cat.to_uppercase(), w.saturating_sub(3)),
                 fg(pal.muted).add_modifier(Modifier::BOLD),
             )],
         );
@@ -231,22 +316,33 @@ pub fn draw_sidebar<H: CoreHit>(
             let hit = H::sidebar(index);
             index += 1;
             let hover = ctx.hovered(hit);
-            let prefix = if hover { " ▸" } else { "  " };
-            let text = pad(&format!("{prefix}{}  {}", it.icon, it.title), w);
-            let strong = |bg: Color| {
+            let style = if hover {
                 Style::new()
                     .fg(pal.bright)
-                    .bg(bg)
-                    .add_modifier(Modifier::BOLD)
-            };
-            let style = if it.selected && (active || hover) {
-                strong(pal.soft_selection)
-            } else if it.selected || hover {
-                strong(pal.soft_muted)
+                    .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+            } else if it.selected {
+                Style::new().fg(pal.bright).add_modifier(Modifier::BOLD)
             } else {
                 fg(pal.fg)
             };
-            put(f, area.x, y, vec![Span::styled(text, style)]);
+            let marker = if it.selected {
+                Span::styled(
+                    "▍",
+                    fg(if active { pal.accent } else { pal.muted }).add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::raw(" ")
+            };
+            put(
+                f,
+                area.x + 1,
+                y,
+                vec![
+                    marker,
+                    Span::raw("  "),
+                    Span::styled(truncate(&it.title, w.saturating_sub(5)), style),
+                ],
+            );
             ctx.hit(Rect::new(area.x, y, area.width, 1), hit);
             y += 1;
         }
@@ -258,47 +354,40 @@ pub fn draw_sidebar<H: CoreHit>(
     if n == 0 || bottom < y + n + 2 {
         return;
     }
-    put(
+    rule_h(
         f,
-        area.x,
+        area.x + 2,
         bottom - n - 1,
-        vec![Span::styled(
-            format!(" {}", "─".repeat(w.saturating_sub(2))),
-            fg(pal.muted),
-        )],
+        (w as u16).saturating_sub(4),
+        pal.rule,
     );
     for (k, tg) in toggles.iter().enumerate() {
         let y = bottom - n + k as u16;
         let hover = ctx.hovered(tg.hit);
-        let lead = if hover { " ▸" } else { "  " };
-        let right = format!("{} ⇄ ", tg.value);
-        // Sin espacio suficiente solo se muestra el icono.
-        let left = if format!("{lead}{}  {} {right}", tg.icon, tg.label).width() <= w {
-            format!("{lead}{}  {}", tg.icon, tg.label)
+        let value = format!("{} ⇄", tg.value);
+        let room = w.saturating_sub(4);
+        let label = if tg.label.width() + 2 + value.width() <= room {
+            tg.label.clone()
         } else {
-            format!("{lead}{}", tg.icon)
+            String::new()
         };
-        let style = if hover {
-            Style::new()
+        let gap = room.saturating_sub(label.width() + value.width());
+        let mut label_style = fg(pal.muted);
+        let mut val_style = fg(pal.bright).add_modifier(Modifier::BOLD);
+        if hover {
+            label_style = label_style
                 .fg(pal.bright)
-                .bg(pal.soft_hover)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            fg(pal.fg)
-        };
-        let val_style = if hover {
-            style
-        } else {
-            fg(pal.accent).add_modifier(Modifier::BOLD)
-        };
-        let gap = w.saturating_sub(left.width() + right.width());
+                .add_modifier(Modifier::UNDERLINED);
+            val_style = fg(pal.accent).add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+        }
         put(
             f,
-            area.x,
+            area.x + 2,
             y,
             vec![
-                Span::styled(format!("{left}{}", " ".repeat(gap)), style),
-                Span::styled(right, val_style),
+                Span::styled(label, label_style),
+                Span::raw(" ".repeat(gap)),
+                Span::styled(value, val_style),
             ],
         );
         ctx.hit(Rect::new(area.x, y, area.width, 1), tg.hit);
@@ -398,22 +487,29 @@ fn field_control<B>(fr: &FieldRow<B>) -> Ctl {
 
 /// Ancho que ocupa el control (sin contar el margen).
 fn ctl_width(c: &Ctl, cap: usize) -> usize {
-    let boxed = |text: &str, extra: usize| text.width().min(cap) + extra + 2;
     match c {
-        Ctl::Toggle(_) => 5 + 1 + t("val.on").width().max(t("val.off").width()) + 1,
-        Ctl::Stepper(_) => 17,
+        Ctl::Toggle(_) => 3 + 1 + t("val.on").width().max(t("val.off").width()),
+        Ctl::Stepper(_) => 13,
         Ctl::Slider { .. } => 17,
-        Ctl::Select(s) | Ctl::Edit(s) => boxed(s, 4),
-        Ctl::Color(_, s) => boxed(s, 7),
-        Ctl::Run(s) => boxed(s, 4),
+        Ctl::Select(s) | Ctl::Edit(s) | Ctl::Run(s) => s.width().min(cap) + 2,
+        Ctl::Color(_, s) => 3 + s.width().min(cap),
     }
+}
+
+/// Líneas de descripción de una fila (como máximo tres).
+fn desc_lines<B>(fr: &FieldRow<B>, width: usize) -> Vec<String> {
+    let mut lines = wrap(&fr.def.desc, width.saturating_sub(6));
+    lines.truncate(3);
+    lines
 }
 
 fn row_height<B, A>(row: &Row<B, A>, width: usize) -> usize {
     match row {
         Row::Note(text, _) => wrap(text, width.saturating_sub(4)).len(),
         Row::Header(_) => 2,
-        _ => 3,
+        // Nombre, descripción (una o más líneas) y una línea de aire.
+        Row::Field(fr) => 2 + desc_lines(fr, width).len().max(1),
+        Row::Action(..) => 3,
     }
 }
 
@@ -462,22 +558,22 @@ pub fn draw_form<H: CoreHit, B, A>(
                 f,
                 area.right().saturating_sub(3),
                 area.bottom().saturating_sub(1),
-                vec![Span::styled(" ▾ ", fg(pal.accent))],
+                vec![Span::styled(" ▾ ", fg(pal.muted))],
             );
             break;
         }
         match row {
             Row::Header(text) => {
-                let title = format!(" ━━ {text} ");
-                let rest = width.saturating_sub(title.width() + 1);
+                let title = text.to_uppercase();
+                let line = (width.saturating_sub(title.width() + 6)).min(6);
                 put(
                     f,
-                    area.x,
+                    area.x + 2,
                     y,
-                    vec![Span::styled(
-                        format!("{title}{}", "━".repeat(rest)),
-                        fg(pal.accent).add_modifier(Modifier::BOLD),
-                    )],
+                    vec![
+                        Span::styled(title, fg(pal.muted).add_modifier(Modifier::BOLD)),
+                        Span::styled(format!(" {}", "─".repeat(line)), fg(pal.rule)),
+                    ],
                 );
             }
             Row::Note(text, kind) => {
@@ -528,7 +624,8 @@ pub fn draw_form<H: CoreHit, B, A>(
     }
 }
 
-/// Fila de 3 líneas: nombre y descripción a la izquierda, control a la derecha.
+/// Fila de 3 líneas: nombre (con el control a la derecha) y descripción
+/// debajo; la tercera queda en blanco o muestra el detalle de la fila elegida.
 #[allow(clippy::too_many_arguments)]
 fn draw_item<H: CoreHit, B, A>(
     f: &mut Frame,
@@ -547,74 +644,103 @@ fn draw_item<H: CoreHit, B, A>(
     let hover_row = row_hovered(ctx, i);
     let lit = focused_sel || hover_row;
     let Some(ctl) = control_for(row) else { return };
-    let cap = (width / 2).clamp(10, 34);
+    let cap = (width / 2).clamp(10, 30);
     let cw = ctl_width(&ctl, cap);
-    let left_w = width.saturating_sub(cw + 3).max(12);
+    // Margen derecho de 2; el control se alinea a la derecha.
+    let cx = area.right().saturating_sub(cw as u16 + 2).max(area.x + 14);
+    let left_w = (cx.saturating_sub(area.x) as usize)
+        .saturating_sub(3)
+        .max(10);
 
-    let (name, desc) = match row {
-        Row::Field(fr) => (fr.def.label.clone(), fr.def.desc.clone()),
-        Row::Action(label, _) => (label.clone(), String::new()),
+    let name = match row {
+        Row::Field(fr) => fr.def.label.clone(),
+        Row::Action(label, _) => label.clone(),
         _ => return,
     };
     let changed = info.changed;
-    let desc_lines = wrap(&desc, left_w.saturating_sub(6));
-
-    // Línea 1: nombre (con ● si tiene un cambio sin aplicar).
-    let mark = if lit { " ▌ " } else { "   " };
-    let dot = if changed { " ●" } else { "" };
-    let name_w = left_w.saturating_sub(mark.width() + dot.width());
-    let name_style = if lit {
-        Style::new()
-            .fg(pal.bright)
-            .bg(pal.soft_selection)
-            .add_modifier(Modifier::BOLD)
-    } else {
-        fg(pal.bright).add_modifier(Modifier::BOLD)
+    let desc_lines = match row {
+        Row::Field(fr) => desc_lines(fr, width),
+        _ => vec![],
     };
+
+    // Línea 1: marca, nombre y, si tiene un cambio sin aplicar, un punto.
+    let name_style = if lit {
+        Style::new().fg(pal.bright).add_modifier(Modifier::BOLD)
+    } else {
+        fg(pal.fg)
+    };
+    let dot_w = if changed { 2 } else { 0 };
     let mut l1 = vec![
-        Span::styled(mark, name_style.fg(pal.accent)),
-        Span::styled(pad(&name, name_w), name_style),
+        Span::styled(
+            if focused_sel { "▍" } else { " " },
+            fg(pal.accent).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw(" "),
+        Span::styled(
+            truncate(&name, left_w.saturating_sub(2 + dot_w)),
+            name_style,
+        ),
     ];
     if changed {
-        l1.push(Span::styled(dot, name_style.fg(pal.warn)));
+        l1.push(Span::styled(
+            " •",
+            fg(pal.accent).add_modifier(Modifier::BOLD),
+        ));
     }
     put(f, area.x, y, l1);
 
-    // Línea 2: descripción (└─ cuando está activa, como en Meca).
-    let first = desc_lines.first().cloned().unwrap_or_default();
-    let l2 = if lit {
-        vec![
-            Span::styled(" ▌ ", fg(pal.accent)),
-            Span::styled(
-                pad(&format!("└─ {first}"), left_w.saturating_sub(3)),
-                fg(pal.fg),
-            ),
-        ]
-    } else {
-        vec![Span::styled(
-            pad(&format!("   {first}"), left_w),
-            fg(pal.muted),
-        )]
-    };
-    put(f, area.x, y + 1, l2);
-
-    // Línea 3: solo en la fila del cursor, información extra.
-    if is_cursor && let Some(extra) = info.extra.clone().or_else(|| desc_lines.get(1).cloned()) {
+    // Descripción atenuada, en su propia línea (usa todo el ancho).
+    for (n, l) in desc_lines.iter().enumerate() {
         put(
             f,
-            area.x,
-            y + 2,
+            area.x + 2,
+            y + 1 + n as u16,
             vec![Span::styled(
-                pad(&format!("      {extra}"), left_w),
+                truncate(l, width.saturating_sub(4)),
                 fg(pal.muted),
             )],
         );
     }
-    ctx.hit(Rect::new(area.x, y, left_w as u16 + 1, 3), H::row(i));
+    // En la fila del cursor, el detalle del modo avanzado ocupa la línea de aire.
+    if is_cursor
+        && desc_lines.len() <= 1
+        && let Some(extra) = info.extra.clone()
+    {
+        put(
+            f,
+            area.x + 2,
+            y + 1 + desc_lines.len().max(1) as u16,
+            vec![Span::styled(
+                truncate(&extra, width.saturating_sub(4)),
+                fg(pal.dim),
+            )],
+        );
+    }
+    ctx.hit(
+        Rect::new(
+            area.x,
+            y,
+            left_w as u16 + 2,
+            1 + desc_lines.len().max(1) as u16,
+        ),
+        H::row(i),
+    );
 
-    // Control a la derecha.
-    let cx = area.x + left_w as u16 + 1;
     draw_control(f, ctx, cx, y, i, &ctl, cap, lit, dropdown);
+}
+
+/// Estilo del valor de un control: acento si la fila está activa, tono
+/// normal si no, y subrayado con el ratón encima.
+fn value_style(pal: &Palette, lit: bool, hover: bool) -> Style {
+    if hover {
+        Style::new()
+            .fg(pal.bright)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+    } else if lit {
+        fg(pal.accent).add_modifier(Modifier::BOLD)
+    } else {
+        fg(pal.fg)
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -634,152 +760,137 @@ fn draw_control<H: CoreHit>(
     match ctl {
         Ctl::Toggle(on) => {
             let h = hov(ctx, Sub::Main);
-            let tn = tone(pal, lit, h);
-            let mark_bg = tn.bg.or(if *on { Some(pal.soft_selection) } else { None });
-            let mut mark = Style::new().fg(if *on || h { pal.bright } else { pal.muted });
-            if let Some(bg) = mark_bg {
-                mark = mark.bg(bg);
-            }
-            if *on || h {
-                mark = mark.add_modifier(Modifier::BOLD);
-            }
-            bevel_box(
-                f,
-                x,
-                y,
-                vec![Span::styled(if *on { " ■ " } else { "   " }, mark)],
-                3,
-                tn.border,
-                tn.shadow,
-                tn.bold,
-            );
-            let label = if *on { t("val.on") } else { t("val.off") };
-            put(
-                f,
-                x + 5,
-                y + 1,
-                vec![Span::styled(
-                    format!(" {label}"),
-                    if *on || h {
+            let (knob, style) = if *on {
+                (
+                    "━━●",
+                    if h || lit {
+                        value_style(pal, lit, h)
+                    } else {
                         fg(pal.bright).add_modifier(Modifier::BOLD)
+                    },
+                )
+            } else {
+                (
+                    "○──",
+                    if h {
+                        value_style(pal, lit, true)
                     } else {
                         fg(pal.muted)
                     },
-                )],
-            );
-            let w = 6 + label.width() as u16;
-            ctx.hit(Rect::new(x, y, w, 3), H::ctrl(i, Sub::Main));
-        }
-        Ctl::Stepper(text) => {
-            for (dx, s, sym) in [(0u16, Sub::Minus, " - "), (12u16, Sub::Plus, " + ")] {
-                let h = hov(ctx, s);
-                let tn = tone(pal, lit, h);
-                bevel_box(
-                    f,
-                    x + dx,
-                    y,
-                    vec![Span::styled(sym, inner_style(pal, &tn))],
-                    3,
-                    tn.border,
-                    tn.shadow,
-                    tn.bold,
-                );
-                ctx.hit(Rect::new(x + dx, y, 5, 3), H::ctrl(i, s));
-            }
-            let h = hov(ctx, Sub::Main);
-            let mut st = fg(if h { pal.accent } else { pal.bright }).add_modifier(Modifier::BOLD);
-            if h {
-                st = st.bg(pal.soft_hover);
-            }
+                )
+            };
+            let label = if *on { t("val.on") } else { t("val.off") };
+            let label_style = if *on && (lit || h) {
+                value_style(pal, lit, h)
+            } else if *on {
+                fg(pal.bright)
+            } else {
+                fg(pal.muted)
+            };
             put(
                 f,
-                x + 5,
-                y + 1,
-                vec![Span::styled(center(&truncate(text, 7), 7), st)],
+                x,
+                y,
+                vec![
+                    Span::styled(knob, style),
+                    Span::styled(format!(" {label}"), label_style),
+                ],
             );
-            ctx.hit(Rect::new(x + 5, y, 7, 3), H::ctrl(i, Sub::Main));
+            let w = 3 + 1 + t("val.on").width().max(t("val.off").width()) as u16;
+            ctx.hit(Rect::new(x, y, w, 2), H::ctrl(i, Sub::Main));
+        }
+        Ctl::Stepper(text) => {
+            let arrow = |ctx: &Ctx<H>, s: Sub| {
+                if ctx.hovered(H::ctrl(i, s)) {
+                    fg(pal.bright).add_modifier(Modifier::BOLD)
+                } else if lit {
+                    fg(pal.accent).add_modifier(Modifier::BOLD)
+                } else {
+                    fg(pal.muted)
+                }
+            };
+            let hm = hov(ctx, Sub::Main);
+            put(
+                f,
+                x,
+                y,
+                vec![
+                    Span::raw(" "),
+                    Span::styled("‹", arrow(ctx, Sub::Minus)),
+                    Span::styled(center(&truncate(text, 9), 9), value_style(pal, lit, hm)),
+                    Span::styled("›", arrow(ctx, Sub::Plus)),
+                ],
+            );
+            ctx.hit(Rect::new(x, y, 3, 2), H::ctrl(i, Sub::Minus));
+            ctx.hit(Rect::new(x + 10, y, 3, 2), H::ctrl(i, Sub::Plus));
+            ctx.hit(Rect::new(x + 3, y, 7, 2), H::ctrl(i, Sub::Main));
         }
         Ctl::Slider { frac, text } => {
             let h = hov(ctx, Sub::Slider);
             let pos = (frac * 10.0).round() as usize;
-            let track = format!("{}●{}", "─".repeat(pos), "─".repeat(10 - pos));
-            let st = if h {
+            let on = if h || lit {
                 fg(pal.accent).add_modifier(Modifier::BOLD)
-            } else if lit {
-                fg(pal.bright).add_modifier(Modifier::BOLD)
             } else {
                 fg(pal.fg)
             };
             let hv = hov(ctx, Sub::Main);
-            let mut vst = fg(pal.bright).add_modifier(Modifier::BOLD);
-            if hv {
-                vst = vst.fg(pal.accent).bg(pal.soft_hover);
-            }
             put(
                 f,
                 x,
-                y + 1,
+                y,
                 vec![
-                    Span::styled(track, st),
-                    Span::styled(format!(" {}", right_align(text, 5)), vst),
+                    Span::styled("━".repeat(pos), on),
+                    Span::styled("●", on),
+                    Span::styled("─".repeat(10 - pos), fg(pal.rule)),
+                    Span::styled(
+                        format!(" {}", right_align(text, 5)),
+                        value_style(pal, lit, hv),
+                    ),
                 ],
             );
-            ctx.hit(Rect::new(x, y, 11, 3), H::ctrl(i, Sub::Slider));
-            ctx.hit(Rect::new(x + 11, y, 6, 3), H::ctrl(i, Sub::Main));
+            ctx.hit(Rect::new(x, y, 11, 2), H::ctrl(i, Sub::Slider));
+            ctx.hit(Rect::new(x + 11, y, 6, 2), H::ctrl(i, Sub::Main));
         }
         Ctl::Select(text) | Ctl::Edit(text) | Ctl::Run(text) => {
             let h = hov(ctx, Sub::Main) || (matches!(ctl, Ctl::Select(_)) && dropdown);
-            let tn = tone(pal, lit, h);
             let suffix = match ctl {
-                Ctl::Select(_) => " ▾ ",
-                Ctl::Edit(_) => " ✎ ",
-                _ => " ▸ ",
+                Ctl::Select(_) => " ▾",
+                Ctl::Edit(_) => " ✎",
+                _ => " →",
             };
-            let body = format!(" {}{suffix}", truncate(text, cap));
-            let inner_w = body.width();
-            bevel_box(
-                f,
-                x,
-                y,
-                vec![Span::styled(body, inner_style(pal, &tn))],
-                inner_w,
-                tn.border,
-                tn.shadow,
-                tn.bold,
-            );
-            ctx.hit(
-                Rect::new(x, y, inner_w as u16 + 2, 3),
-                H::ctrl(i, Sub::Main),
-            );
-        }
-        Ctl::Color(c, text) => {
-            let h = hov(ctx, Sub::Main);
-            let tn = tone(pal, lit, h);
-            let st = inner_style(pal, &tn);
-            let mut swatch = Style::new().fg(c.unwrap_or(pal.dim));
-            if let Some(bg) = tn.bg {
-                swatch = swatch.bg(bg);
-            }
-            let label = format!(" {} ✎ ", truncate(text, cap));
-            let inner_w = 3 + label.width();
-            bevel_box(
+            let shown = truncate(text, cap);
+            let w = shown.width() as u16 + 2;
+            let hint = if lit || h {
+                fg(pal.accent)
+            } else {
+                fg(pal.muted)
+            };
+            put(
                 f,
                 x,
                 y,
                 vec![
-                    Span::styled(" ", st),
-                    Span::styled("██", swatch),
-                    Span::styled(label, st),
+                    Span::styled(shown, value_style(pal, lit, h)),
+                    Span::styled(suffix, hint),
                 ],
-                inner_w,
-                tn.border,
-                tn.shadow,
-                tn.bold,
             );
-            ctx.hit(
-                Rect::new(x, y, inner_w as u16 + 2, 3),
-                H::ctrl(i, Sub::Main),
+            ctx.hit(Rect::new(x, y, w, 2), H::ctrl(i, Sub::Main));
+        }
+        Ctl::Color(c, text) => {
+            let h = hov(ctx, Sub::Main);
+            let shown = truncate(text, cap);
+            let w = 3 + shown.width() as u16;
+            put(
+                f,
+                x,
+                y,
+                vec![
+                    Span::styled("██", fg(c.unwrap_or(pal.dim))),
+                    Span::raw(" "),
+                    Span::styled(shown, value_style(pal, lit, h)),
+                ],
             );
+            ctx.hit(Rect::new(x, y, w, 2), H::ctrl(i, Sub::Main));
         }
     }
 }

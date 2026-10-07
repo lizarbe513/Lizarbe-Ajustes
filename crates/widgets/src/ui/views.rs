@@ -6,9 +6,8 @@ use lizarbe_core::ui::{center, right_align};
 use lizarbe_core::view::{self, ButtonSpec, Ctx, FormOpts, RowInfo};
 use ratatui::Frame;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Modifier;
 use ratatui::text::Span;
-use ratatui::widgets::{Block, BorderType, Borders};
 use serde_json::Value;
 use unicode_width::UnicodeWidthStr;
 
@@ -22,43 +21,36 @@ use crate::omarchy::schema::{self, value_label};
 use crate::omarchy::shell_json as sj;
 use crate::store::Bind;
 
-/// Alto de la zona de botones: separador + botones de 3 líneas.
-const BUTTONS_H: u16 = 4;
+/// Alto de la zona de botones: la línea fina, los botones y una línea de aire.
+pub(super) const BUTTONS_H: u16 = 3;
 
-pub(super) fn draw_content(f: &mut Frame, app: &mut App, area: Rect) {
+pub(super) fn draw_content(f: &mut Frame, app: &mut App, area: Rect, rule_y: u16) {
     let focused = app.focus == Focus::Content && app.popup.is_none();
-    let x = area.x + 1;
-    let w = area.width.saturating_sub(2);
-    if area.height < 10 || w < 30 {
+    let x = area.x;
+    let w = area.width;
+    if area.height < 9 || w < 30 {
         return;
     }
 
-    // Encabezado: título en mayúsculas, descripción y separador.
+    // Encabezado: título en mayúsculas y descripción.
     let (title, desc) = section_header(app);
-    view::section_header(
+    let head_h = view::section_header(
         f,
         &app.pal,
-        Rect::new(x, area.y, w, 3),
+        Rect::new(x + 1, area.y + 1, w.saturating_sub(2), 4),
         &title,
         &desc,
         focused,
     );
 
-    let body = Rect::new(x, area.y + 3, w, area.height.saturating_sub(3 + BUTTONS_H));
+    let top = area.y + 1 + head_h;
+    let body = Rect::new(x, top, w, rule_y.saturating_sub(top));
     match app.section {
         Section::Widgets if app.widgets.editing.is_none() => draw_layout(f, app, body, focused),
         Section::Plugins => draw_plugins(f, app, body, focused),
         _ => draw_form(f, app, body, focused),
     }
-
-    let sep_y = area.bottom() - BUTTONS_H;
-    put(
-        f,
-        x,
-        sep_y,
-        vec![Span::styled("─".repeat(w as usize), fg(app.pal.muted))],
-    );
-    draw_buttons(f, app, Rect::new(x, sep_y + 1, w, 3));
+    draw_buttons(f, app, Rect::new(x, rule_y + 1, w, 1));
 }
 
 fn section_header(app: &App) -> (String, String) {
@@ -87,6 +79,7 @@ fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
         .iter()
         .map(|b| ButtonSpec {
             label: b.label(),
+            key: b.key().to_string(),
             enabled: app.button_enabled(*b),
             primary: *b == Button::Apply,
         })
@@ -95,11 +88,11 @@ fn draw_buttons(f: &mut Frame, app: &mut App, area: Rect) {
     let pending = app.store.changes().len() + app.store.ops.len();
     let (status, color) = if pending > 0 {
         (
-            format!("● {}", tf("btn.pending", &[("n", &pending.to_string())])),
-            app.pal.warn,
+            format!("• {}", tf("btn.pending", &[("n", &pending.to_string())])),
+            app.pal.accent,
         )
     } else {
-        (format!("✓ {}", t("btn.clean")), app.pal.muted)
+        (format!("✓ {}", t("btn.clean")), app.pal.ok)
     };
     let selected = focused.then_some(app.button);
     view::draw_buttons(f, &mut ctx(app), area, &buttons, selected, (&status, color));
@@ -199,7 +192,7 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         .and_then(Value::as_str)
         .unwrap_or("top")
         .to_string();
-    let inner = w.saturating_sub(4);
+    let inner = w.saturating_sub(6);
     let third = inner / 3;
     let bar_line = format!(
         "{}{}{}",
@@ -209,11 +202,15 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     );
     put(
         f,
-        area.x,
+        area.x + 2,
         area.y,
         vec![Span::styled(
-            format!(" 󰍹 {} ({})", t("lay.preview"), t(&format!("pos.{pos}"))),
-            fg(app.pal.muted),
+            format!(
+                "{} · {}",
+                t("lay.preview").to_uppercase(),
+                t(&format!("pos.{pos}"))
+            ),
+            fg(app.pal.muted).add_modifier(Modifier::BOLD),
         )],
     );
     put(
@@ -221,12 +218,9 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         area.x,
         area.y + 1,
         vec![
-            Span::styled(" ▕", fg(app.pal.muted)),
-            Span::styled(
-                bar_line,
-                Style::new().fg(app.pal.bright).bg(app.pal.surface),
-            ),
-            Span::styled("▏", fg(app.pal.muted)),
+            Span::styled(" │ ", fg(app.pal.rule)),
+            Span::styled(bar_line, fg(app.pal.bright)),
+            Span::styled(" │", fg(app.pal.rule)),
         ],
     );
 
@@ -250,45 +244,52 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             cols_area.height,
         );
         let active = focused && app.widgets.col == s;
-        let col_hover = app.popup.is_none()
-            && matches!(app.hover, Some(Hit::Column(c)) | Some(Hit::Widget(c, _)) | Some(Hit::AddWidget(c)) if c == s);
         let drop_target = app.widgets.drag.is_some()
             && matches!(app.widgets.drag_over, Some(Hit::Column(c)) | Some(Hit::Widget(c, _)) if c == s);
         let entries = sj::section(&app.store.json, s).to_vec();
-        let border = if active || drop_target {
-            app.pal.accent
-        } else if col_hover {
-            app.pal.bright
-        } else {
-            app.pal.muted
-        };
-        let block = Block::new()
-            .borders(Borders::ALL)
-            .border_type(if active || drop_target {
-                BorderType::Thick
-            } else {
-                BorderType::Plain
-            })
-            .border_style(fg(border))
-            .title(Span::styled(
-                format!(
-                    " {} ({}) ",
-                    t(&format!("col.{}", sj::SECTIONS[s])),
-                    entries.len()
-                ),
-                fg(if active {
-                    app.pal.accent
+        // Las columnas se separan con una línea fina; sin cajas.
+        if s > 0 {
+            lizarbe_core::ui::rule_v(f, a.x, a.y, a.height, app.pal.rule);
+        }
+        let inner = Rect::new(
+            a.x + 2,
+            a.y + 2,
+            a.width.saturating_sub(3),
+            a.height.saturating_sub(2),
+        );
+        let heading = format!(
+            "{} · {}",
+            t(&format!("col.{}", sj::SECTIONS[s])).to_uppercase(),
+            entries.len()
+        );
+        put(
+            f,
+            a.x + 2,
+            a.y,
+            vec![Span::styled(
+                truncate(&heading, a.width.saturating_sub(3) as usize),
+                if active || drop_target {
+                    fg(app.pal.accent).add_modifier(Modifier::BOLD)
                 } else {
-                    app.pal.bright
-                })
-                .add_modifier(Modifier::BOLD),
-            ));
-        let inner = block.inner(a);
-        f.render_widget(block, a);
+                    fg(app.pal.muted).add_modifier(Modifier::BOLD)
+                },
+            )],
+        );
+        lizarbe_core::ui::rule_h(
+            f,
+            a.x + 2,
+            a.y + 1,
+            a.width.saturating_sub(4),
+            if active || drop_target {
+                app.pal.accent
+            } else {
+                app.pal.rule
+            },
+        );
         app.hits.push((a, Hit::Column(s)));
         let iw = inner.width as usize;
 
-        // Deja una fila para "＋ Añadir".
+        // Deja una fila para "+ Añadir".
         let visible = (inner.height as usize).saturating_sub(1);
         let sel = app.widgets.row[s].min(entries.len().saturating_sub(1));
         let offset = sel.saturating_sub(visible.saturating_sub(1));
@@ -306,53 +307,38 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                     text = format!("{text}  {id}");
                 }
             }
-            let marker = if is_sel && focused {
-                "▌"
-            } else if hover {
-                "▸"
-            } else {
-                " "
-            };
+            let marker = if is_sel && focused { "▍" } else { " " };
             let style = if over {
                 fg(app.pal.accent).add_modifier(Modifier::UNDERLINED | Modifier::BOLD)
             } else if dragging {
-                fg(app.pal.muted)
+                fg(app.pal.dim)
             } else if hover {
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(app.pal.soft_hover)
-                    .add_modifier(Modifier::BOLD)
+                fg(app.pal.bright).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
             } else if is_sel && focused {
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(app.pal.soft_selection)
-                    .add_modifier(Modifier::BOLD)
+                fg(app.pal.bright).add_modifier(Modifier::BOLD)
             } else if is_sel {
-                Style::new().fg(app.pal.bright).bg(app.pal.soft_muted)
+                fg(app.pal.bright)
             } else {
                 fg(app.pal.fg)
             };
             put(
                 f,
-                inner.x,
+                inner.x - 1,
                 y,
                 vec![
-                    Span::styled(marker, fg(app.pal.accent)),
-                    Span::styled(pad(&format!(" {text}"), iw.saturating_sub(1)), style),
+                    Span::styled(marker, fg(app.pal.accent).add_modifier(Modifier::BOLD)),
+                    Span::styled(format!(" {}", truncate(&text, iw.saturating_sub(1))), style),
                 ],
             );
             app.hits.push((Rect::new(inner.x, y, inner.width, 1), hit));
             y += 1;
         }
-        // Botón para añadir al final de la columna.
+        // Acción para añadir al final de la columna.
         if y < inner.bottom() {
             let hit = Hit::AddWidget(s);
             let hover = hovered(app, hit);
             let style = if hover {
-                Style::new()
-                    .fg(app.pal.bright)
-                    .bg(app.pal.soft_hover)
-                    .add_modifier(Modifier::BOLD)
+                fg(app.pal.bright).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
             } else {
                 fg(app.pal.muted)
             };
@@ -361,10 +347,7 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 inner.x,
                 y,
                 vec![Span::styled(
-                    pad(
-                        &format!("{} 󰐕 {}", if hover { "▸" } else { " " }, t("lay.add")),
-                        iw,
-                    ),
+                    truncate(&format!("+ {}", t("lay.add")), iw),
                     style,
                 )],
             );
@@ -394,7 +377,7 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
             dy,
             vec![
                 Span::styled(
-                    format!(" {}", widget_label(app, e)),
+                    format!("  {}", widget_label(app, e)),
                     fg(app.pal.bright).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
@@ -424,7 +407,7 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 area.x,
                 dy + 1,
                 vec![Span::styled(
-                    truncate(&format!(" {}", settings.join("  ")), w),
+                    truncate(&format!("  {}", settings.join("  ")), w),
                     fg(app.pal.muted),
                 )],
             );
@@ -435,7 +418,7 @@ fn draw_layout(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         area.x,
         dy + 2,
         vec![Span::styled(
-            truncate(&format!(" {}", t("lay.tip")), w),
+            truncate(&format!("  {}", t("lay.tip")), w),
             fg(app.pal.dim),
         )],
     );
@@ -455,17 +438,15 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let searching = app.plugins.filtering || !app.plugins.filter.is_empty();
     let text = if searching {
         format!(
-            " 󰍉 {}{}",
+            "  / {}{}",
             app.plugins.filter,
             if app.plugins.filtering { "▏" } else { "" }
         )
     } else {
-        format!(" 󰍉 {}", t("pl.filter_hint"))
+        format!("  / {}", t("pl.filter_hint"))
     };
-    let style = if hover {
-        Style::new().fg(app.pal.bright).bg(app.pal.soft_hover)
-    } else if app.plugins.filtering {
-        Style::new().fg(app.pal.bright).bg(app.pal.soft_selection)
+    let style = if hover || app.plugins.filtering {
+        fg(app.pal.bright).add_modifier(Modifier::UNDERLINED)
     } else {
         fg(app.pal.muted)
     };
@@ -479,8 +460,8 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         .push((Rect::new(area.x, area.y, (w.min(48)) as u16, 1), hit));
     let search_w = w.min(48) as u16 + 2;
     let global = [
-        ('n', "󰐕", t("pl.btn.add"), true),
-        ('U', "󰚰", t("pl.btn.update_all"), true),
+        ('n', "", t("pl.btn.add"), true),
+        ('U', "", t("pl.btn.update_all"), true),
     ];
     draw_chips(
         f,
@@ -510,15 +491,17 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
         let y = list.y + (i - offset) as u16;
         match row {
             PluginRow::Header(title) => {
-                let head = format!(" ━━ {title} ");
                 put(
                     f,
-                    list.x,
+                    list.x + 2,
                     y,
-                    vec![Span::styled(
-                        format!("{head}{}", "━".repeat(w.saturating_sub(head.width() + 1))),
-                        fg(app.pal.accent).add_modifier(Modifier::BOLD),
-                    )],
+                    vec![
+                        Span::styled(
+                            title.to_uppercase(),
+                            fg(app.pal.muted).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(" ──────", fg(app.pal.rule)),
+                    ],
                 );
             }
             PluginRow::Item(id) => {
@@ -560,72 +543,46 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 } else {
                     t("pl.state.off")
                 };
-                let bg = if is_sel {
-                    Some(app.pal.soft_selection)
-                } else if hover_row {
-                    Some(app.pal.soft_muted)
-                } else {
-                    None
-                };
-                let with_bg = |s: Style| match bg {
-                    Some(b) => s.bg(b),
-                    None => s,
-                };
                 let switch = if on {
-                    format!(" ■ {} ", t("val.on"))
+                    format!("━━● {}", t("val.on"))
                 } else {
-                    format!(" □ {} ", t("val.off"))
+                    format!("○── {}", t("val.off"))
                 };
-                let sw_w = switch.width().max(7);
+                let sw_w = switch.width().max(7) + 2;
                 let right = format!("{state} · {origin}  ");
                 let mut label = name;
                 if app.advanced {
                     label = format!("{label}  {id}");
                 }
-                if changed {
-                    label.push_str(" ●");
-                }
-                let left_w = w.saturating_sub(4 + right.width() + sw_w + 1);
-                let marker = if is_sel {
-                    "▌"
-                } else if hover_row {
-                    "▸"
+                let left_w =
+                    w.saturating_sub(4 + right.width() + sw_w + 1 + if changed { 2 } else { 0 });
+                let marker = if is_sel { "▍" } else { " " };
+                let name_style = if is_sel || hover_row {
+                    fg(app.pal.bright).add_modifier(Modifier::BOLD)
                 } else {
-                    " "
+                    fg(app.pal.fg)
                 };
                 let mut spans = vec![
-                    Span::styled(marker, fg(app.pal.accent)),
+                    Span::styled(marker, fg(app.pal.accent).add_modifier(Modifier::BOLD)),
                     Span::styled(
                         if on { " ● " } else { " ○ " },
-                        with_bg(fg(if on { app.pal.accent } else { app.pal.dim })),
+                        fg(if on { app.pal.fg } else { app.pal.dim }),
                     ),
-                    Span::styled(
-                        pad(&label, left_w),
-                        with_bg(
-                            fg(if changed {
-                                app.pal.warn
-                            } else {
-                                app.pal.bright
-                            })
-                            .add_modifier(if is_sel || hover_row {
-                                Modifier::BOLD
-                            } else {
-                                Modifier::empty()
-                            }),
-                        ),
-                    ),
-                    Span::styled(right, with_bg(fg(app.pal.muted))),
+                    Span::styled(pad(&label, left_w), name_style),
                 ];
+                if changed {
+                    spans.push(Span::styled(
+                        " •",
+                        fg(app.pal.accent).add_modifier(Modifier::BOLD),
+                    ));
+                }
+                spans.push(Span::styled(right, fg(app.pal.muted)));
                 let sw_style = if hover_sw {
-                    Style::new()
-                        .fg(app.pal.bright)
-                        .bg(app.pal.soft_hover)
-                        .add_modifier(Modifier::BOLD)
+                    fg(app.pal.bright).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                } else if on && is_sel {
+                    fg(app.pal.accent).add_modifier(Modifier::BOLD)
                 } else if on {
-                    Style::new()
-                        .fg(app.pal.bright)
-                        .bg(app.pal.soft_selection)
-                        .add_modifier(Modifier::BOLD)
+                    fg(app.pal.bright)
                 } else {
                     fg(app.pal.muted)
                 };
@@ -644,13 +601,19 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     let dy = area.bottom() - detail_h;
     put(
         f,
-        area.x,
+        area.x + 2,
         dy - 1,
-        vec![Span::styled("╌".repeat(w), fg(app.pal.dim))],
+        vec![Span::styled(
+            "─".repeat(w.saturating_sub(4)),
+            fg(app.pal.rule),
+        )],
     );
     if let Some(p) = app.selected_plugin() {
         let mut head = vec![Span::styled(
-            format!(" {}", curated::widget_name(&p.id, None, &app.store.catalog)),
+            format!(
+                "  {}",
+                curated::widget_name(&p.id, None, &app.store.catalog)
+            ),
             fg(app.pal.bright).add_modifier(Modifier::BOLD),
         )];
         if app.advanced {
@@ -675,7 +638,7 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 f,
                 area.x,
                 y,
-                vec![Span::styled(format!(" {l}"), fg(app.pal.fg))],
+                vec![Span::styled(format!("  {l}"), fg(app.pal.fg))],
             );
             y += 1;
         }
@@ -705,7 +668,7 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 f,
                 area.x,
                 y,
-                vec![Span::styled(truncate(&format!(" {text}"), w), fg(color))],
+                vec![Span::styled(truncate(&format!("  {text}"), w), fg(color))],
             );
         }
         let can_clone = p.first_party && app.store.catalog.clone_of(&p.id).is_none();
@@ -728,8 +691,9 @@ fn draw_plugins(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
     }
 }
 
-/// Botones planos de una línea para las acciones de plugins: (tecla
-/// equivalente, icono, texto, habilitado). Se omiten los que no caben.
+/// Botones de texto de una línea para las acciones de plugins: (tecla
+/// equivalente, —, texto, habilitado). La tecla se muestra tal cual
+/// (`n`, `U`, `p`…). Se omiten los que no caben.
 fn draw_chips(
     f: &mut Frame,
     app: &mut App,
@@ -739,28 +703,24 @@ fn draw_chips(
     chips: &[(char, &str, String, bool)],
 ) {
     let mut used = 0usize;
-    for (key, icon, label, enabled) in chips {
-        let text = format!(" {icon} {label} ");
-        let cw = text.width();
+    for (key, _icon, label, enabled) in chips {
+        let k = key.to_string();
+        let cw = lizarbe_core::ui::button_width(&k, label);
         if used + cw > max_w {
             break;
         }
         let hit = Hit::PluginAction(*key);
-        let style = if !enabled {
-            fg(app.pal.dim)
-        } else if hovered(app, hit) {
-            Style::new()
-                .fg(app.pal.bright)
-                .bg(app.pal.soft_hover)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::new().fg(app.pal.bright).bg(app.pal.soft_muted)
-        };
+        let lit = *enabled && hovered(app, hit);
         let cx = x + used as u16;
-        put(f, cx, y, vec![Span::styled(text, style)]);
+        put(
+            f,
+            cx,
+            y,
+            lizarbe_core::ui::button_spans(&app.pal, &k, label, *enabled, false, lit),
+        );
         if *enabled {
             app.hits.push((Rect::new(cx, y, cw as u16, 1), hit));
         }
-        used += cw + 1;
+        used += cw + 3;
     }
 }

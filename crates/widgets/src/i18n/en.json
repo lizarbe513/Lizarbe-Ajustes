@@ -277,5 +277,6 @@
   "hint.plugin": "Click to select · double-click or the switch to toggle · right-click for more.",
   "hint.plugin_switch": "Click to turn on or off.",
   "w.settings": "Settings",
-  "conflict.body": "{files} was modified outside Widgets (for example by dragging a widget on the bar) while you had pending changes."
+  "conflict.body": "{files} was modified outside Widgets (for example by dragging a widget on the bar) while you had pending changes.",
+  "hint.close": "Close Widgets (asks if there are unapplied changes)"
 }

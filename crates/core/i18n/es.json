@@ -3,8 +3,8 @@
   "btn.apply.desc": "Guardar los {n} cambio(s) pendiente(s) (con copia de seguridad).",
   "btn.cancel": "Cancelar",
   "btn.cancel.desc": "Descartar los cambios pendientes y volver a lo que estaba guardado.",
-  "btn.clean": "Sin cambios pendientes",
-  "btn.pending": "{n} cambio(s) sin aplicar",
+  "btn.clean": "Sin cambios",
+  "btn.pending": "{n} sin aplicar",
   "btn.restore": "Restaurar",
   "ch.backups": "Antes de guardar se hace una copia de seguridad en {dir}.",
   "ch.header": "Cambios pendientes",
@@ -136,5 +136,7 @@
   "val.empty": "vacío",
   "val.example": "ej.",
   "val.off": "No",
-  "val.on": "Sí"
+  "val.on": "Sí",
+  "btn.close": "Cerrar",
+  "status.pending": "{n} sin aplicar"
 }

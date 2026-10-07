@@ -11,7 +11,9 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::i18n::{t, tf};
 use crate::popup::{Menu, Picker, Popup, PopupTypes};
-use crate::ui::{bevel_box, button_look, centered, fg, frame, pad, put, row_style, truncate, wrap};
+use crate::ui::{
+    button_spans, button_width, centered, fg, frame, key_text, list_row, pad, put, truncate, wrap,
+};
 use crate::view::{CoreHit, Ctx};
 
 /// Dibuja la ventana emergente encima de todo lo demás.
@@ -42,37 +44,36 @@ fn window_width(area: Rect) -> u16 {
         .min(area.width.saturating_sub(2))
 }
 
-/// Botones de la ventana, alineados a la derecha (como en Meca).
+/// Botones de texto de la ventana, alineados a la derecha: `[⏎] Aceptar   [Esc] Cancelar`.
 fn draw_modal_buttons<T: PopupTypes, H: CoreHit>(
     f: &mut Frame,
     ctx: &mut Ctx<H>,
     popup: &Popup<T>,
     area: Rect,
 ) {
-    let buttons = popup.buttons();
-    let labels: Vec<String> = buttons.iter().map(|(k, _)| format!(" {} ", t(k))).collect();
-    let gap = 2u16;
-    let total: u16 = labels.iter().map(|l| l.width() as u16 + 2).sum::<u16>()
-        + gap * labels.len().saturating_sub(1) as u16;
-    let mut x = area.right().saturating_sub(total + 1);
-    for (i, ((_, key), label)) in buttons.iter().zip(labels).enumerate() {
+    let buttons: Vec<(String, String, bool)> = popup
+        .buttons()
+        .iter()
+        .map(|(k, code)| (key_text(*code), t(k), *code == KeyCode::Enter))
+        .collect();
+    let gap = 3u16;
+    let total: u16 = buttons
+        .iter()
+        .map(|(k, l, _)| button_width(k, l) as u16)
+        .sum::<u16>()
+        + gap * buttons.len().saturating_sub(1) as u16;
+    let mut x = area.right().saturating_sub(total + 2);
+    for (i, (key, label, primary)) in buttons.iter().enumerate() {
         let hit = H::modal_button(i);
-        let hover = ctx.hover_is(hit);
-        let primary = *key == KeyCode::Enter;
-        let w = label.width();
-        let (border, shadow, text) = button_look(ctx.pal, true, hover, false, primary);
-        bevel_box(
+        let w = button_width(key, label) as u16;
+        put(
             f,
             x,
             area.y,
-            vec![Span::styled(label, text)],
-            w,
-            border,
-            shadow,
-            hover || primary,
+            button_spans(ctx.pal, key, label, true, *primary, ctx.hover_is(hit)),
         );
-        ctx.hit(Rect::new(x, area.y, w as u16 + 2, 3), hit);
-        x += w as u16 + 2 + gap;
+        ctx.hit(Rect::new(x, area.y, w, 1), hit);
+        x += w + gap;
     }
 }
 
@@ -87,7 +88,7 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
     let w = window_width(area);
     let tw = (w as usize).saturating_sub(4);
     let has_buttons = !popup.buttons().is_empty();
-    let buttons_h: u16 = if has_buttons { 4 } else { 0 };
+    let buttons_h: u16 = if has_buttons { 2 } else { 0 };
     let max_body = area.height.saturating_sub(4 + buttons_h).max(3);
 
     match popup {
@@ -101,7 +102,7 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
                     f,
                     inner.x,
                     inner.y + n as u16,
-                    vec![Span::styled(format!(" {l}"), fg(ctx.pal.fg))],
+                    vec![Span::styled(format!("  {l}"), fg(ctx.pal.fg))],
                 );
             }
             buttons_at(f, ctx, popup, inner);
@@ -115,7 +116,7 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
                     f,
                     inner.x,
                     inner.y + n as u16,
-                    vec![Span::styled(format!(" {l}"), fg(ctx.pal.fg))],
+                    vec![Span::styled(format!("  {l}"), fg(ctx.pal.fg))],
                 );
             }
             buttons_at(f, ctx, popup, inner);
@@ -130,7 +131,7 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
                     f,
                     inner.x,
                     inner.y + n as u16,
-                    vec![Span::styled(format!(" {l}"), fg(ctx.pal.muted))],
+                    vec![Span::styled(format!("  {l}"), fg(ctx.pal.muted))],
                 );
             }
             // Campo de texto con desplazamiento horizontal.
@@ -151,10 +152,12 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
                 inner.x,
                 fy,
                 vec![
-                    Span::styled(" ┃ ", fg(ctx.pal.accent).add_modifier(Modifier::BOLD)),
+                    Span::styled("  ▍", fg(ctx.pal.accent).add_modifier(Modifier::BOLD)),
                     Span::styled(
                         pad(&shown, field_w),
-                        Style::new().fg(ctx.pal.bright).bg(ctx.pal.soft_selection),
+                        Style::new()
+                            .fg(ctx.pal.bright)
+                            .add_modifier(Modifier::UNDERLINED),
                     ),
                 ],
             );
@@ -181,8 +184,7 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
                 let y = inner.y + (n - offset) as u16;
                 let hit = H::popup_item(n);
                 let on = c.checked.get(n).copied().unwrap_or(false);
-                let style = row_style(ctx.pal, ctx.hover_is(hit), n == c.sel, true);
-                let mut text = format!(" {} {}", if on { "■" } else { "□" }, o.label);
+                let mut text = format!(" {} {}", if on { "●" } else { "○" }, o.label);
                 if !o.desc.is_empty() {
                     text = format!("{text}  — {}", o.desc);
                 }
@@ -190,10 +192,14 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
                     f,
                     inner.x,
                     y,
-                    vec![
-                        Span::styled(if n == c.sel { "▌" } else { " " }, fg(ctx.pal.accent)),
-                        Span::styled(pad(&text, inner.width as usize - 1), style),
-                    ],
+                    list_row(
+                        ctx.pal,
+                        &text,
+                        inner.width as usize,
+                        n == c.sel,
+                        ctx.hover_is(hit),
+                        true,
+                    ),
                 );
                 ctx.hit(Rect::new(inner.x, y, inner.width, 1), hit);
             }
@@ -219,11 +225,11 @@ fn buttons_at<T: PopupTypes, H: CoreHit>(
     popup: &Popup<T>,
     inner: Rect,
 ) {
-    if popup.buttons().is_empty() || inner.height < 4 {
+    if popup.buttons().is_empty() || inner.height < 2 {
         return;
     }
-    let y = inner.bottom() - 3;
-    draw_modal_buttons(f, ctx, popup, Rect::new(inner.x, y, inner.width, 3));
+    let y = inner.bottom() - 1;
+    draw_modal_buttons(f, ctx, popup, Rect::new(inner.x, y, inner.width, 1));
 }
 
 /// Selector grande (añadir widget): buscador, lista agrupada y detalle.
@@ -298,36 +304,35 @@ fn draw_big_picker<T: PopupTypes, H: CoreHit>(
         let y = list.y + (n - offset) as u16;
         match idx {
             None => {
-                let head = format!(" ━━ {label} ");
                 put(
                     f,
-                    list.x,
+                    list.x + 2,
                     y,
-                    vec![Span::styled(
-                        format!("{head}{}", "━".repeat(iw.saturating_sub(head.width() + 1))),
-                        fg(ctx.pal.accent).add_modifier(Modifier::BOLD),
-                    )],
+                    vec![
+                        Span::styled(
+                            label.to_uppercase(),
+                            fg(ctx.pal.muted).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled(" ───", fg(ctx.pal.rule)),
+                    ],
                 );
             }
             Some(i) => {
                 let it = &p.items[*i];
                 let hit = H::popup_item(*i);
-                let style = row_style(ctx.pal, ctx.hover_is(hit), *i == p.sel, it.enabled);
                 let current = p.current.as_ref() == Some(&it.value);
                 put(
                     f,
                     list.x,
                     y,
-                    vec![
-                        Span::styled(if *i == p.sel { "▌" } else { " " }, fg(ctx.pal.accent)),
-                        Span::styled(
-                            pad(
-                                &format!(" {} {label}", if current { "✓" } else { " " }),
-                                iw.saturating_sub(1),
-                            ),
-                            style,
-                        ),
-                    ],
+                    list_row(
+                        ctx.pal,
+                        &format!(" {} {label}", if current { "✓" } else { " " }),
+                        iw,
+                        *i == p.sel,
+                        ctx.hover_is(hit),
+                        it.enabled,
+                    ),
                 );
                 ctx.hit(Rect::new(list.x, y, list.width, 1), hit);
             }
@@ -345,7 +350,7 @@ fn draw_big_picker<T: PopupTypes, H: CoreHit>(
                 f,
                 inner.x,
                 dy + n as u16,
-                vec![Span::styled(format!(" {l}"), fg(ctx.pal.muted))],
+                vec![Span::styled(format!("  {l}"), fg(ctx.pal.muted))],
             );
         }
     }
@@ -369,11 +374,13 @@ fn draw_help<T: PopupTypes, H: CoreHit>(
     let desc_w = (w as usize).saturating_sub(key_w + 7);
     let mut lines: Vec<Vec<Span>> = vec![];
     for (title, keys) in &content.sections {
-        let head = format!(" ━━ {title} ");
-        lines.push(vec![Span::styled(
-            head,
-            fg(pal.accent).add_modifier(Modifier::BOLD),
-        )]);
+        lines.push(vec![
+            Span::styled(
+                format!("  {}", title.to_uppercase()),
+                fg(pal.muted).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(" ───", fg(pal.rule)),
+        ]);
         for (k, d) in keys {
             for (n, part) in wrap(d, desc_w).into_iter().enumerate() {
                 let key = if n == 0 {
@@ -456,8 +463,8 @@ fn draw_dropdown<T: PopupTypes, H: CoreHit>(
     f.render_widget(Clear, r);
     let block = Block::new()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(fg(ctx.pal.accent).add_modifier(Modifier::BOLD));
+        .border_type(BorderType::Rounded)
+        .border_style(fg(ctx.pal.rule));
     let inner = block.inner(r);
     f.render_widget(block, r);
     let iw = inner.width as usize;
@@ -493,18 +500,18 @@ fn draw_dropdown<T: PopupTypes, H: CoreHit>(
         let hit = H::popup_item(i);
         let y = ly + (n - offset) as u16;
         let current = p.current.as_ref() == Some(&it.value);
-        let style = row_style(ctx.pal, ctx.hover_is(hit), i == p.sel, it.enabled);
         put(
             f,
             inner.x,
             y,
-            vec![Span::styled(
-                pad(
-                    &format!(" {} {}", if current { "✓" } else { " " }, it.label),
-                    iw,
-                ),
-                style,
-            )],
+            list_row(
+                ctx.pal,
+                &format!(" {} {}", if current { "✓" } else { " " }, it.label),
+                iw,
+                i == p.sel,
+                ctx.hover_is(hit),
+                it.enabled,
+            ),
         );
         ctx.hit(Rect::new(inner.x, y, inner.width, 1), hit);
     }
@@ -527,8 +534,8 @@ fn draw_menu<T: PopupTypes, H: CoreHit>(f: &mut Frame, ctx: &mut Ctx<H>, area: R
     f.render_widget(Clear, r);
     let block = Block::new()
         .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(fg(ctx.pal.accent).add_modifier(Modifier::BOLD));
+        .border_type(BorderType::Rounded)
+        .border_style(fg(ctx.pal.rule));
     let inner = block.inner(r);
     f.render_widget(block, r);
     let iw = inner.width as usize;
@@ -542,20 +549,23 @@ fn draw_menu<T: PopupTypes, H: CoreHit>(f: &mut Frame, ctx: &mut Ctx<H>, area: R
                 f,
                 inner.x,
                 ly,
-                vec![Span::styled("─".repeat(iw), fg(ctx.pal.dim))],
+                vec![Span::styled("─".repeat(iw), fg(ctx.pal.rule))],
             );
             ly += 1;
         }
         let hit = H::menu_item(i);
-        let style = row_style(ctx.pal, ctx.hover_is(hit), i == m.sel, it.enabled);
         put(
             f,
             inner.x,
             ly,
-            vec![Span::styled(
-                pad(&truncate(&format!(" {}  {}", it.icon, it.label), iw), iw),
-                style,
-            )],
+            list_row(
+                ctx.pal,
+                &truncate(&format!(" {}  {}", it.icon, it.label), iw),
+                iw,
+                i == m.sel,
+                ctx.hover_is(hit),
+                it.enabled,
+            ),
         );
         if it.enabled {
             ctx.hit(Rect::new(inner.x, ly, inner.width, 1), hit);

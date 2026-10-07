@@ -122,14 +122,23 @@ pub enum Button {
 }
 
 impl Button {
-    /// En el orden en que se dibujan (como en Meca: el principal a la derecha).
-    pub const ALL: [Button; 3] = [Button::Restore, Button::Cancel, Button::Apply];
+    /// En el orden en que se dibujan: el principal primero.
+    pub const ALL: [Button; 3] = [Button::Apply, Button::Cancel, Button::Restore];
 
     pub fn label(self) -> String {
         match self {
-            Button::Apply => format!(" 󰄬 {} ", t("btn.apply")),
-            Button::Cancel => format!(" 󰜺 {} ", t("btn.cancel")),
-            Button::Restore => format!(" 󰑓 {} ", t("btn.restore")),
+            Button::Apply => t("btn.apply"),
+            Button::Cancel => t("btn.cancel"),
+            Button::Restore => t("btn.restore"),
+        }
+    }
+
+    /// Tecla que lo activa (la que se muestra entre corchetes).
+    pub fn key(self) -> &'static str {
+        match self {
+            Button::Apply => "A",
+            Button::Cancel => "C",
+            Button::Restore => "R",
         }
     }
 }
@@ -161,6 +170,7 @@ pub enum Hit {
     ModalButton(usize),
     MenuItem(usize),
     Button(usize),
+    Close,
 }
 
 impl CoreHit for Hit {
@@ -175,6 +185,9 @@ impl CoreHit for Hit {
     }
     fn sidebar(i: usize) -> Self {
         Hit::Sidebar(i)
+    }
+    fn close() -> Self {
+        Hit::Close
     }
     fn mode_toggle() -> Self {
         Hit::ModeToggle
@@ -668,7 +681,9 @@ impl App {
     // ------------------------------------------------------------ teclado
 
     pub fn on_key(&mut self, key: KeyEvent) {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('w'))
+        {
             self.request_quit();
             return;
         }
@@ -722,7 +737,7 @@ impl App {
                     Focus::Sidebar => Focus::Content,
                     Focus::Content => {
                         // Al llegar a los botones se propone "Aplicar" si hay cambios.
-                        self.button = if self.store.dirty() { 2 } else { 0 };
+                        self.button = 0;
                         Focus::Buttons
                     }
                     Focus::Buttons => Focus::Sidebar,
@@ -1663,6 +1678,7 @@ impl App {
                     self.press(b);
                 }
             }
+            Some(Hit::Close) => self.request_quit(),
             Some(Hit::Sidebar(i)) => {
                 self.section = Section::ALL[i];
                 self.focus = Focus::Content;
@@ -2026,6 +2042,7 @@ impl App {
             Hit::Sidebar(i) => Section::ALL[i].description(),
             Hit::ModeToggle => t("hint.mode"),
             Hit::LangToggle => t("hint.lang"),
+            Hit::Close => t("hint.close"),
             Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
                 Row::Field(f) => {
                     let what = match f.def.kind {

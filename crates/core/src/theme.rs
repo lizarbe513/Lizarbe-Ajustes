@@ -1,9 +1,8 @@
 //! Paleta de la interfaz tomada del tema activo de Omarchy (`colors.toml`).
 //!
-//! Igual que en Meca, además de los colores del tema se derivan tonos suaves
-//! (`soft_hover`, `soft_selection`, `soft_muted`) mezclando el fondo con el
-//! acento, la selección y el color atenuado: así el destello al pasar el ratón
-//! no deslumbra en temas oscuros y el texto sigue siendo legible.
+//! Además de los colores del tema se derivan `rule` (líneas finas) y `ok`; el
+//! texto atenuado y el apagado se acercan al texto normal si no contrastan lo
+//! bastante con el fondo, para que el diseño se lea con cualquier tema.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -12,19 +11,18 @@ use ratatui::style::Color;
 
 #[derive(Debug, Clone)]
 pub struct Palette {
+    /// Fondo del tema (para derivar tonos y comprobar el contraste).
+    pub bg: Color,
     pub fg: Color,
     pub bright: Color,
     pub accent: Color,
     pub muted: Color,
     pub dim: Color,
-    pub surface: Color,
     pub warn: Color,
-    /// Fondo bajo el cursor del ratón.
-    pub soft_hover: Color,
-    /// Fondo del elemento seleccionado.
-    pub soft_selection: Color,
-    /// Fondo atenuado (sidebar al pasar el ratón, barras).
-    pub soft_muted: Color,
+    /// Verde del tema: estados correctos (activo, aplicado).
+    pub ok: Color,
+    /// Líneas finas de la rejilla: apenas más claras que el fondo.
+    pub rule: Color,
 }
 
 impl Default for Palette {
@@ -50,6 +48,54 @@ fn rgb(s: &str) -> Option<(u8, u8, u8)> {
     }
     let p = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).ok();
     Some((p(0)?, p(2)?, p(4)?))
+}
+
+/// Luminancia relativa (WCAG) de un color.
+fn luminance(c: (u8, u8, u8)) -> f32 {
+    let lin = |v: u8| {
+        let v = v as f32 / 255.0;
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c.0) + 0.7152 * lin(c.1) + 0.0722 * lin(c.2)
+}
+
+/// Relación de contraste (1 a 21) entre dos colores.
+pub fn contrast(a: (u8, u8, u8), b: (u8, u8, u8)) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// Acerca `c` a `toward` hasta que contraste al menos `min` con `bg`
+/// (si ya contrasta lo suficiente, no lo toca).
+pub fn ensure_contrast(
+    c: (u8, u8, u8),
+    bg: (u8, u8, u8),
+    toward: (u8, u8, u8),
+    min: f32,
+) -> (u8, u8, u8) {
+    let mut out = c;
+    for step in 1..=20 {
+        if contrast(out, bg) >= min {
+            break;
+        }
+        let ratio = step as f32 / 20.0;
+        out = (
+            (c.0 as f32 * (1.0 - ratio) + toward.0 as f32 * ratio).round() as u8,
+            (c.1 as f32 * (1.0 - ratio) + toward.1 as f32 * ratio).round() as u8,
+            (c.2 as f32 * (1.0 - ratio) + toward.2 as f32 * ratio).round() as u8,
+        );
+    }
+    out
+}
+
+fn blend_rgb(a: (u8, u8, u8), b: (u8, u8, u8), ratio: f32) -> (u8, u8, u8) {
+    let m = |x: u8, y: u8| (x as f32 * (1.0 - ratio) + y as f32 * ratio).round() as u8;
+    (m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
 /// Mezcla `a` con `b` en la proporción `ratio` (0 = a, 1 = b).
@@ -86,46 +132,31 @@ impl Palette {
             .and_then(|v| rgb(v))
             .unwrap_or(if light { fg } else { (255, 255, 255) });
         let accent = get("accent", "#e31b23");
-        let selection = get("selection", "#45475a");
         let muted = map
             .get("muted")
             .or(map.get("dark_foreground"))
             .and_then(|v| rgb(v))
             .unwrap_or((0x58, 0x5b, 0x70));
         let dim = get("dark_foreground", "#505050");
-        let surface = get("lighter_background", "#1a1a1a");
         let warn = get("yellow", "#e0af68");
+        let ok = get("green", "#9ece6a");
 
-        // Mismas proporciones que el motor de temas de Meca.
-        let (soft_hover, soft_selection, soft_muted) = if light {
-            (
-                blend(bg, accent, 0.16),
-                blend(bg, selection, 0.45),
-                blend(bg, muted, 0.22),
-            )
-        } else {
-            let lum = 0.299 * selection.0 as f32
-                + 0.587 * selection.1 as f32
-                + 0.114 * selection.2 as f32;
-            let sel_ratio = if lum > 85.0 { 0.24 } else { 0.65 };
-            (
-                blend(bg, accent, 0.22),
-                blend(bg, selection, sel_ratio),
-                blend(bg, muted, 0.38),
-            )
-        };
+        // Texto atenuado y apagado siempre legibles sobre el fondo del tema.
+        let toward = if light { (0, 0, 0) } else { (255, 255, 255) };
+        let muted_t = ensure_contrast(muted, bg, toward, 4.0);
+        let dim_t = ensure_contrast(dim, bg, toward, 2.4);
+        let rule = ensure_contrast(blend_rgb(bg, muted_t, 0.4), bg, toward, 1.5);
         let c = |x: (u8, u8, u8)| Color::Rgb(x.0, x.1, x.2);
         Palette {
+            bg: c(bg),
             fg: c(fg),
             bright: c(bright),
             accent: c(accent),
-            muted: c(muted),
-            dim: c(dim),
-            surface: c(surface),
+            muted: c(muted_t),
+            dim: c(dim_t),
             warn: c(warn),
-            soft_hover,
-            soft_selection,
-            soft_muted,
+            ok: c(ok),
+            rule: c(rule),
         }
     }
 }
@@ -143,19 +174,33 @@ mod tests {
     }
 
     #[test]
-    fn derives_soft_colors_like_meca() {
-        let map: HashMap<String, String> = [
-            ("background", "#000000"),
-            ("accent", "#ff0000"),
-            ("selection", "#ffffff"),
-            ("muted", "#646464"),
-        ]
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect();
-        let p = Palette::from_map(&map);
-        assert_eq!(p.soft_hover, Color::Rgb(56, 0, 0)); // 22 % de acento
-        assert_eq!(p.soft_selection, Color::Rgb(61, 61, 61)); // selección clara: 24 %
-        assert_eq!(p.soft_muted, Color::Rgb(38, 38, 38)); // 38 % de muted
+    fn keeps_quiet_text_legible_in_any_theme() {
+        // Un atenuado casi igual al fondo se acerca al texto hasta ser legible.
+        assert!(contrast((20, 20, 24), (8, 8, 11)) < 2.0);
+        let c = ensure_contrast((20, 20, 24), (8, 8, 11), (255, 255, 255), 4.0);
+        assert!(contrast(c, (8, 8, 11)) >= 4.0);
+        // Lo que ya contrasta no se toca.
+        assert_eq!(
+            ensure_contrast((200, 200, 200), (0, 0, 0), (255, 255, 255), 4.0),
+            (200, 200, 200)
+        );
+        // En un tema claro se oscurece.
+        let c = ensure_contrast((230, 220, 200), (216, 199, 158), (0, 0, 0), 4.0);
+        assert!(contrast(c, (216, 199, 158)) >= 4.0);
+    }
+
+    #[test]
+    fn palette_always_has_visible_rules() {
+        for (bg, mode) in [("#08080b", "dark"), ("#d8c79e", "light")] {
+            let map: HashMap<String, String> = [("background", bg), ("mode", mode)]
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            let p = Palette::from_map(&map);
+            let (Color::Rgb(a, b, c), Color::Rgb(x, y, z)) = (p.bg, p.rule) else {
+                panic!()
+            };
+            assert!(contrast((a, b, c), (x, y, z)) >= 1.4, "{bg}");
+        }
     }
 }
