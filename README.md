@@ -83,6 +83,11 @@ El catálogo es `crates/tienda/catalogo.toml` (se embebe en el binario). Para a�
 entrada `[[app]]` (`fuente = "aur"` para las del AUR; por defecto son de los repos).
 `cargo test -p lizarbe-tienda -- --ignored` comprueba, con internet, que sus paquetes existen en su fuente.
 
+Teclas, como en Escritorio: el panel con el foco lleva el marcador `▍` en color de acento (en el otro,
+atenuado). `↑↓` cambia de categoría; `Enter`, `Espacio` o `→` entran a la lista; `Esc` o `←` vuelven a las
+categorías, y `Esc` desde ahí sale. `Tab` alterna de panel, `1`-`9` saltan a una categoría, `/` busca
+(`Esc` borra la búsqueda), `Espacio` marca, `Enter` instala, `x` quita, `o` abre, `a` el buscador clásico.
+
 ```bash
 lizarbe-tienda --fuente aur             # abrir el modo AUR (por defecto: repos)
 lizarbe-tienda --categoria multimedia   # abrir en una categoría (o recomendadas, instaladas)

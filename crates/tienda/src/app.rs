@@ -195,9 +195,17 @@ impl App {
 
     fn mover_vista(&mut self, delta: isize) {
         let n = self.vistas.len() as isize;
-        self.vista = (self.vista as isize + delta).clamp(0, n - 1) as usize;
-        self.fila = 0;
-        self.scroll = 0;
+        self.ir_vista((self.vista as isize + delta).clamp(0, n - 1) as usize);
+    }
+
+    /// Cambia de categoría; una búsqueda en curso se descarta para que se vea.
+    fn ir_vista(&mut self, i: usize) {
+        if i < self.vistas.len() {
+            self.vista = i;
+            self.consulta.clear();
+            self.fila = 0;
+            self.scroll = 0;
+        }
     }
 
     fn marcar(&mut self) {
@@ -378,14 +386,21 @@ impl TuiApp for App {
         let en_vistas = self.foco == Foco::Vistas;
         match key.code {
             KeyCode::Char('q') => self.salir_o_confirmar(),
+            // Esc retrocede un paso: borra la búsqueda, vuelve a las categorías y, desde ahí, sale.
             KeyCode::Esc => {
-                if self.consulta.is_empty() {
+                if en_vistas {
                     self.salir_o_confirmar();
-                } else {
+                } else if !self.consulta.is_empty() {
                     self.consulta.clear();
                     self.fila = 0;
+                } else {
+                    self.foco = Foco::Vistas;
                 }
             }
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.foco = if en_vistas { Foco::Lista } else { Foco::Vistas };
+            }
+            KeyCode::Char(c @ '1'..='9') => self.ir_vista(c as usize - '1' as usize),
             KeyCode::Up | KeyCode::Char('k') => {
                 if en_vistas {
                     self.mover_vista(-1)
@@ -405,14 +420,15 @@ impl TuiApp for App {
             KeyCode::Home | KeyCode::Char('g') => self.fila = 0,
             KeyCode::End | KeyCode::Char('G') => self.fila = usize::MAX / 2,
             KeyCode::Left | KeyCode::Char('h') => self.foco = Foco::Vistas,
-            KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => self.foco = Foco::Lista,
+            KeyCode::Right | KeyCode::Char('l') => self.foco = Foco::Lista,
             KeyCode::Char('/') => self.foco = Foco::Busqueda,
-            KeyCode::Char(' ') => self.marcar(),
-            KeyCode::Enter if en_vistas => self.foco = Foco::Lista,
-            KeyCode::Enter | KeyCode::Char('i') => self.pedir_instalar(),
-            KeyCode::Char('x') | KeyCode::Delete => self.pedir_quitar(),
-            KeyCode::Char('o') => self.abrir(),
             KeyCode::Char('a') => self.avanzado(),
+            // Con el foco en las categorías, Enter y Espacio entran a la lista.
+            KeyCode::Enter | KeyCode::Char(' ') if en_vistas => self.foco = Foco::Lista,
+            KeyCode::Char(' ') => self.marcar(),
+            KeyCode::Enter | KeyCode::Char('i') if !en_vistas => self.pedir_instalar(),
+            KeyCode::Char('x') | KeyCode::Delete if !en_vistas => self.pedir_quitar(),
+            KeyCode::Char('o') if !en_vistas => self.abrir(),
             _ => {}
         }
         let n = self.visibles().len();
@@ -441,9 +457,7 @@ impl TuiApp for App {
                 }
                 match h {
                     Hit::Vista(i) => {
-                        self.vista = i;
-                        self.fila = 0;
-                        self.scroll = 0;
+                        self.ir_vista(i);
                         self.foco = Foco::Vistas;
                     }
                     Hit::Fila(i) => {
@@ -519,5 +533,102 @@ impl TuiApp for App {
 
     fn should_quit(&self) -> bool {
         self.salir
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::crossterm::event::KeyEventKind;
+
+    fn app() -> App {
+        let cat = Catalogo::embebido();
+        let mut estado = Estado::default();
+        for a in &cat.apps {
+            estado.disponibles.extend(a.paquetes.iter().cloned());
+        }
+        App::new(
+            cat,
+            estado,
+            Palette::load(std::path::Path::new("/nonexistent")),
+            Fuente::Repos,
+        )
+    }
+
+    fn tecla(a: &mut App, c: KeyCode) {
+        let mut k = KeyEvent::new(c, KeyModifiers::NONE);
+        k.kind = KeyEventKind::Press;
+        a.on_key(k);
+    }
+
+    #[test]
+    fn esc_steps_back_from_list_to_categories_then_quits() {
+        let mut a = app();
+        assert_eq!(a.foco, Foco::Lista);
+        tecla(&mut a, KeyCode::Esc);
+        assert_eq!(a.foco, Foco::Vistas);
+        assert!(!a.should_quit());
+        tecla(&mut a, KeyCode::Esc);
+        assert!(a.should_quit());
+    }
+
+    #[test]
+    fn esc_clears_search_before_leaving_the_list() {
+        let mut a = app();
+        a.buscar("video");
+        tecla(&mut a, KeyCode::Esc);
+        assert!(a.consulta.is_empty());
+        assert_eq!(a.foco, Foco::Lista);
+        tecla(&mut a, KeyCode::Esc);
+        assert_eq!(a.foco, Foco::Vistas);
+    }
+
+    #[test]
+    fn enter_space_right_and_tab_move_into_the_list() {
+        for k in [
+            KeyCode::Enter,
+            KeyCode::Char(' '),
+            KeyCode::Right,
+            KeyCode::Tab,
+        ] {
+            let mut a = app();
+            a.foco = Foco::Vistas;
+            tecla(&mut a, k);
+            assert_eq!(a.foco, Foco::Lista, "{k:?}");
+            assert!(a.marcadas.is_empty(), "entrar no marca nada ({k:?})");
+        }
+        let mut a = app();
+        tecla(&mut a, KeyCode::Tab);
+        assert_eq!(a.foco, Foco::Vistas);
+        tecla(&mut a, KeyCode::Left);
+        assert_eq!(a.foco, Foco::Vistas);
+    }
+
+    #[test]
+    fn category_keys_work_from_categories_and_clear_the_search() {
+        let mut a = app();
+        a.foco = Foco::Vistas;
+        a.buscar("video");
+        tecla(&mut a, KeyCode::Down);
+        assert_eq!(a.vista, 1);
+        assert!(a.consulta.is_empty());
+        tecla(&mut a, KeyCode::Char('3'));
+        assert_eq!(a.vista, 2);
+        tecla(&mut a, KeyCode::Char('9'));
+        assert_eq!(a.vista, 8);
+        tecla(&mut a, KeyCode::Char('9'));
+        assert_eq!(a.vista, 8);
+    }
+
+    #[test]
+    fn list_actions_do_nothing_while_categories_are_focused() {
+        let mut a = app();
+        a.foco = Foco::Vistas;
+        tecla(&mut a, KeyCode::Char('x'));
+        tecla(&mut a, KeyCode::Char('i'));
+        assert!(a.modal.is_none());
+        a.foco = Foco::Lista;
+        tecla(&mut a, KeyCode::Enter);
+        assert!(a.modal.is_some());
     }
 }

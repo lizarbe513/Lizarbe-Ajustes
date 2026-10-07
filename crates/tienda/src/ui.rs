@@ -115,6 +115,7 @@ impl App {
             let texto = format!("{icono}  {nombre}");
             let mut spans = list_row(&pal, &texto, r.width as usize, sel, hover, true);
             if sel && self.foco != Foco::Vistas {
+                spans[0].style = fg(pal.muted).add_modifier(Modifier::BOLD);
                 spans[1].style = spans[1].style.remove_modifier(Modifier::BOLD).fg(pal.muted);
             }
             put(f, r.x, y, spans);
@@ -182,7 +183,12 @@ impl App {
             let spans = vec![
                 Span::styled(
                     if sel { "▍" } else { " " },
-                    fg(pal.accent).add_modifier(Modifier::BOLD),
+                    fg(if self.foco == Foco::Vistas {
+                        pal.muted
+                    } else {
+                        pal.accent
+                    })
+                    .add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(format!("{glifo} "), fg(color).add_modifier(Modifier::BOLD)),
                 Span::styled(pad(&app.nombre, ancho_nombre), estilo),
@@ -347,15 +353,26 @@ impl App {
             (None, Fuente::Repos) => (String::new(), false),
         };
         let h = |k: &str, d: &str, p: u8| -> Hint { (k.into(), t(d), p) };
-        let hints = vec![
-            h("↑↓", "hint.move", 3),
-            h("␣", "hint.mark", 2),
-            h("⏎", "hint.install", 3),
-            h("x", "hint.remove", 1),
-            h("/", "hint.search", 2),
-            h("a", "hint.advanced", 0),
-            h("q", "hint.quit", 3),
-        ];
+        let hints = match self.foco {
+            Foco::Vistas => vec![
+                h("↑↓", "hint.category", 3),
+                h("⏎", "hint.enter", 3),
+                h("/", "hint.search", 2),
+                h("Tab", "hint.switch", 1),
+                h("a", "hint.advanced", 0),
+                h("Esc", "hint.quit", 3),
+            ],
+            Foco::Lista => vec![
+                h("↑↓", "hint.move", 3),
+                h("␣", "hint.mark", 2),
+                h("⏎", "hint.install", 3),
+                h("x", "hint.remove", 1),
+                h("/", "hint.search", 2),
+                h("a", "hint.advanced", 0),
+                h("Esc", "hint.back", 3),
+            ],
+            Foco::Busqueda => vec![h("⏎", "hint.results", 3), h("Esc", "hint.clear", 3)],
+        };
         let pal = self.pal.clone();
         status_bar(f, &pal, r, &texto, negrita, &hints);
     }
@@ -489,5 +506,19 @@ mod tests {
             .collect();
         assert!(!repos.contains(&"onlyoffice".to_string()));
         pantalla(&mut r, 100, 24);
+    }
+
+    #[test]
+    fn focus_changes_hints_and_markers() {
+        lizarbe_core::i18n::set_lang(lizarbe_core::i18n::Lang::Es);
+        let mut a = app();
+        let lista = pantalla(&mut a, 130, 14);
+        assert!(lista.contains("Esc volver") && lista.contains("marcar"));
+        a.foco = Foco::Vistas;
+        let vistas = pantalla(&mut a, 130, 14);
+        assert!(vistas.contains("Esc salir") && vistas.contains("categoría"));
+        a.foco = Foco::Busqueda;
+        assert!(pantalla(&mut a, 130, 14).contains("borrar búsqueda"));
+        println!("{lista}\n{vistas}");
     }
 }
