@@ -88,6 +88,10 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let name = t("app.name");
     let subtitle = t("app.subtitle");
     let close = ("Q", t("btn.close"));
+    let back_label = t("btn.back");
+    // Esc retrocede mientras el foco no esté ya en el menú de la izquierda.
+    let back = (app.focus != Focus::Sidebar && app.popup.is_none())
+        .then_some(("Esc", back_label.as_str()));
     view::draw_header(
         f,
         &mut ctx(app),
@@ -97,6 +101,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
         &parts,
         pending_text.as_deref(),
         (close.0, &close.1),
+        back,
     );
 }
 
@@ -274,12 +279,21 @@ fn footer_hints(app: &App) -> Vec<Hint> {
         };
     }
     let mut v = match app.focus {
-        Focus::Sidebar => vec![k("↑↓", "ft.section", 1), k("Enter", "ft.open", 2)],
-        Focus::Buttons => vec![k("←→", "ft.choose_button", 2), k("Enter", "ft.press", 3)],
+        Focus::Sidebar => vec![
+            k("↑↓", "ft.section", 1),
+            k("Enter", "ft.open", 2),
+            k("Esc", "ft.close", 3),
+        ],
+        Focus::Buttons => vec![
+            k("←→", "ft.choose_button", 2),
+            k("Enter", "ft.press", 3),
+            k("Esc", "ft.back", 3),
+        ],
         Focus::Content => vec![
             k("←→", "ft.change", 2),
             k("Enter", "ft.edit", 2),
             k("r", "ft.reset", 1),
+            k("Esc", "ft.back", 3),
         ],
     };
     v.push(k("o", "ft.menu", 1));
@@ -384,6 +398,24 @@ mod tests {
         app.go_section(Section::Keybinds);
         let lines = render(&mut app, 64, 30);
         assert!(lines.iter().all(|l| l.chars().count() <= 64));
+    }
+
+    #[test]
+    fn esc_hint_follows_the_focus() {
+        let (_d, mut app) = app();
+        app.focus = crate::app::Focus::Content;
+        let text = render(&mut app, 120, 36).join("\n");
+        assert!(text.contains("[Esc] Volver"), "{text}");
+        app.focus = crate::app::Focus::Sidebar;
+        let text = render(&mut app, 120, 36).join("\n");
+        assert!(!text.contains("[Esc] Volver"));
+    }
+
+    #[test]
+    fn sidebar_shows_section_icons() {
+        let (_d, mut app) = app();
+        let text = render(&mut app, 120, 36).join("\n");
+        assert!(text.contains(crate::app::Section::Monitors.icon()));
     }
 
     /// `cargo test dump_screens -- --ignored --nocapture` imprime las pantallas.

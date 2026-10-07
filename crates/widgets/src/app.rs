@@ -171,6 +171,7 @@ pub enum Hit {
     MenuItem(usize),
     Button(usize),
     Close,
+    Back,
 }
 
 impl CoreHit for Hit {
@@ -188,6 +189,9 @@ impl CoreHit for Hit {
     }
     fn close() -> Self {
         Hit::Close
+    }
+    fn back() -> Self {
+        Hit::Back
     }
     fn mode_toggle() -> Self {
         Hit::ModeToggle
@@ -1679,6 +1683,7 @@ impl App {
                 }
             }
             Some(Hit::Close) => self.request_quit(),
+            Some(Hit::Back) => self.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
             Some(Hit::Sidebar(i)) => {
                 self.section = Section::ALL[i];
                 self.focus = Focus::Content;
@@ -1800,15 +1805,14 @@ impl App {
                     self.on_key(key(code));
                 }
             }
-            // Un clic fuera cierra los menús y desplegables (como en Meca).
-            None => {
+            // Un clic fuera (o sobre el control que la abrió) cierra los menús y desplegables.
+            _ => {
                 let light = matches!(self.popup, Some(Popup::Menu(_)))
                     || matches!(&self.popup, Some(Popup::Picker(p)) if p.anchor.is_some());
                 if light {
                     self.popup = None;
                 }
             }
-            _ => {}
         }
     }
 
@@ -2043,6 +2047,7 @@ impl App {
             Hit::ModeToggle => t("hint.mode"),
             Hit::LangToggle => t("hint.lang"),
             Hit::Close => t("hint.close"),
+            Hit::Back => t("hint.back"),
             Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
                 Row::Field(f) => {
                     let what = match f.def.kind {

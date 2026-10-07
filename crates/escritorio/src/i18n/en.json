@@ -588,5 +588,6 @@
   "lang.err_menu": "Could not translate the Omarchy menu (lizarbe-menu-sync). Run lizarbe-doctor --fix.",
   "lang.err_system": "Could not change the system language (a password is requested to do it). The menu and apps did change.",
   "msg.warning": "Applied with warnings",
-  "hint.close": "Close Desktop (asks if there are unapplied changes)"
+  "hint.close": "Close Desktop (asks if there are unapplied changes)",
+  "hint.back": "Go back: from the content to the menu, or close the open section"
 }

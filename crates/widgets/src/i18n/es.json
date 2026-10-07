@@ -278,5 +278,6 @@
   "hint.plugin_switch": "Clic para activar o desactivar.",
   "w.settings": "Ajustes",
   "conflict.body": "{files} se modificó fuera de Widgets (por ejemplo, al arrastrar un widget en la barra) mientras tenías cambios pendientes.",
-  "hint.close": "Cierra Widgets (pregunta si hay cambios sin aplicar)"
+  "hint.close": "Cierra Widgets (pregunta si hay cambios sin aplicar)",
+  "hint.back": "Vuelve atrás: del contenido al menú, o cierra la sección abierta"
 }

@@ -138,5 +138,7 @@
   "val.off": "No",
   "val.on": "Yes",
   "btn.close": "Close",
-  "status.pending": "{n} unapplied"
+  "status.pending": "{n} unapplied",
+  "btn.back": "Back",
+  "ft.back": "back"
 }

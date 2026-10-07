@@ -83,6 +83,7 @@ pub enum Hit {
     MenuItem(usize),
     Button(usize),
     Close,
+    Back,
 }
 
 impl CoreHit for Hit {
@@ -100,6 +101,9 @@ impl CoreHit for Hit {
     }
     fn close() -> Self {
         Hit::Close
+    }
+    fn back() -> Self {
+        Hit::Back
     }
     fn mode_toggle() -> Self {
         Hit::ModeToggle
@@ -1025,6 +1029,7 @@ impl App {
                 }
             }
             Some(Hit::Close) => self.request_quit(),
+            Some(Hit::Back) => self.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
             Some(Hit::Sidebar(i)) => self.go_section(Section::ALL[i]),
             Some(Hit::ModeToggle) => self.on_key(key(KeyCode::Char('m'))),
             Some(Hit::LangToggle) => self.on_key(key(KeyCode::Char('i'))),
@@ -1096,15 +1101,14 @@ impl App {
                     self.on_key(key(code));
                 }
             }
-            // Un clic fuera cierra los menús y desplegables.
-            None => {
+            // Un clic fuera (o sobre el control que la abrió) cierra los menús y desplegables.
+            _ => {
                 let light = matches!(self.popup, Some(Popup::Menu(_)))
                     || matches!(&self.popup, Some(Popup::Picker(p)) if p.anchor.is_some());
                 if light {
                     self.popup = None;
                 }
             }
-            _ => {}
         }
     }
 
@@ -1257,6 +1261,7 @@ impl App {
             Hit::ModeToggle => t("hint.mode"),
             Hit::LangToggle => t("hint.lang"),
             Hit::Close => t("hint.close"),
+            Hit::Back => t("hint.back"),
             Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
                 Row::Field(f) if Self::is_list_row(&f.bind.0) => {
                     format!("{} — {}", f.def.label, t("hint.bind"))
@@ -1362,5 +1367,52 @@ impl TuiApp for App {
 
     fn should_quit(&self) -> bool {
         self.quit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::paths::Paths;
+
+    fn app() -> (tempfile::TempDir, App) {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("hyprland.lua"),
+            "require(\"hypr.looknfeel\")\n",
+        )
+        .unwrap();
+        let store = Store::load(Paths::detect(Some(dir.path().to_path_buf())));
+        (dir, App::new(store, Prefs::default()))
+    }
+
+    #[test]
+    fn clicking_the_control_again_closes_an_open_menu() {
+        let (_d, mut app) = app();
+        app.open_menu(None, (10, 5));
+        assert!(app.popup.is_some());
+        // Un clic sobre cualquier control (el que la abrió, por ejemplo) la cierra.
+        app.click(Some(Hit::Ctrl(0, Sub::Main)), false, 0);
+        assert!(app.popup.is_none());
+    }
+
+    #[test]
+    fn clicking_an_item_of_the_menu_does_not_just_close_it() {
+        let (_d, mut app) = app();
+        app.open_menu(None, (10, 5));
+        let before = app.popup.is_some();
+        app.click(Some(Hit::MenuItem(0)), false, 0);
+        assert!(before);
+    }
+
+    #[test]
+    fn close_button_and_back_button_work() {
+        let (_d, mut app) = app();
+        app.focus = Focus::Content;
+        app.click(Some(Hit::Back), false, 0);
+        assert_eq!(app.focus, Focus::Sidebar);
+        app.click(Some(Hit::Close), false, 0);
+        // Sin cambios pendientes cierra la aplicación.
+        assert!(app.quit);
     }
 }

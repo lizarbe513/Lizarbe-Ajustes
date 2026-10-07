@@ -96,6 +96,10 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let name = t("app.name");
     let subtitle = t("app.subtitle");
     let close = t("btn.close");
+    let back_label = t("btn.back");
+    // Esc retrocede mientras el foco no esté ya en el menú de la izquierda.
+    let back = (app.focus != Focus::Sidebar && app.popup.is_none())
+        .then_some(("Esc", back_label.as_str()));
     view::draw_header(
         f,
         &mut ctx(app),
@@ -105,6 +109,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
         &parts,
         pending.as_deref(),
         ("Q", &close),
+        back,
     );
 }
 
@@ -211,10 +216,12 @@ fn footer_hints(app: &App) -> Vec<Hint> {
         (Focus::Sidebar, _) => {
             v.push(k("↑↓", "ft.section", 1));
             v.push(k("Enter", "ft.open", 2));
+            v.push(k("Esc", "ft.close", 3));
         }
         (Focus::Buttons, _) => {
             v.push(k("←→", "ft.choose_button", 2));
             v.push(k("Enter", "ft.press", 3));
+            v.push(k("Esc", "ft.back", 3));
         }
         (Focus::Content, Section::Widgets) if app.widgets.editing.is_none() => {
             v.push(k("⇧+←→↑↓", "ft.reorder", 1));
@@ -231,6 +238,9 @@ fn footer_hints(app: &App) -> Vec<Hint> {
             v.push(k("Enter", "ft.edit", 2));
             v.push(k("r", "ft.reset", 1));
         }
+    }
+    if app.focus == Focus::Content {
+        v.push(k("Esc", "ft.back", 3));
     }
     v.push(k("o", "ft.menu", 1));
     v.push(k("Tab", "ft.next_area", 0));

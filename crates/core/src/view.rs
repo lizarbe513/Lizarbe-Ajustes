@@ -37,6 +37,7 @@ pub trait CoreHit: Copy + PartialEq {
     fn button(i: usize) -> Self;
     fn sidebar(i: usize) -> Self;
     fn close() -> Self;
+    fn back() -> Self;
     fn mode_toggle() -> Self;
     fn lang_toggle() -> Self;
     fn popup_item(i: usize) -> Self;
@@ -87,11 +88,13 @@ pub fn draw_header<H: CoreHit>(
     parts: &[String],
     pending: Option<&str>,
     close: (&str, &str),
+    back: Option<(&str, &str)>,
 ) {
     let pal = ctx.pal;
     let w = area.width as usize;
     let close_w = button_width(close.0, close.1);
-    let mut right_w = close_w + 2;
+    let back_w = back.map_or(0, |b| button_width(b.0, b.1) + 3);
+    let mut right_w = close_w + 2 + back_w;
     let parts_text = parts.join("  ·  ");
     let pend_w = pending.map_or(0, |p| p.width() + 5);
     let mut show_parts = true;
@@ -131,11 +134,25 @@ pub fn draw_header<H: CoreHit>(
 
     let mut x = area.right().saturating_sub(right_w as u16);
     if right_w > 0 {
+        if let Some((key, label)) = back {
+            let hit = H::back();
+            let lit = ctx.hovered(hit);
+            let bw = button_width(key, label) as u16;
+            put(
+                f,
+                x,
+                area.y,
+                button_spans(pal, key, label, true, false, lit),
+            );
+            ctx.hit(Rect::new(x, area.y, bw, 1), hit);
+            x += bw + 3;
+        }
         let hit = H::close();
         let lit = ctx.hovered(hit);
         let spans = button_spans(pal, close.0, close.1, true, false, lit);
         put(f, x, area.y, spans);
         ctx.hit(Rect::new(x, area.y, close_w as u16, 1), hit);
+        x = area.right().saturating_sub(right_w as u16);
     }
     if show_pending && let Some(p) = pending {
         let pw = (p.width() + 5) as u16;
@@ -305,7 +322,11 @@ pub fn draw_sidebar<H: CoreHit>(
             y,
             vec![Span::styled(
                 truncate(&cat.to_uppercase(), w.saturating_sub(3)),
-                fg(pal.muted).add_modifier(Modifier::BOLD),
+                if active {
+                    fg(pal.fg).add_modifier(Modifier::BOLD)
+                } else {
+                    fg(pal.muted).add_modifier(Modifier::BOLD)
+                },
             )],
         );
         y += 1;
@@ -322,8 +343,11 @@ pub fn draw_sidebar<H: CoreHit>(
                     .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
             } else if it.selected {
                 Style::new().fg(pal.bright).add_modifier(Modifier::BOLD)
-            } else {
+            } else if active {
                 fg(pal.fg)
+            } else {
+                // Sin el foco, el menú se atenúa para que se note dónde está.
+                fg(pal.muted)
             };
             let marker = if it.selected {
                 Span::styled(
@@ -333,14 +357,21 @@ pub fn draw_sidebar<H: CoreHit>(
             } else {
                 Span::raw(" ")
             };
+            let icon_style = if it.selected || hover {
+                fg(pal.bright)
+            } else {
+                fg(pal.muted)
+            };
             put(
                 f,
                 area.x + 1,
                 y,
                 vec![
                     marker,
+                    Span::raw(" "),
+                    Span::styled(it.icon, icon_style),
                     Span::raw("  "),
-                    Span::styled(truncate(&it.title, w.saturating_sub(5)), style),
+                    Span::styled(truncate(&it.title, w.saturating_sub(7)), style),
                 ],
             );
             ctx.hit(Rect::new(area.x, y, area.width, 1), hit);
@@ -617,6 +648,7 @@ pub fn draw_form<H: CoreHit, B, A>(
                     i == sel,
                     &ri,
                     dropdown,
+                    opts.focused,
                 )
             }
         }
@@ -638,6 +670,7 @@ fn draw_item<H: CoreHit, B, A>(
     is_cursor: bool,
     info: &RowInfo,
     dropdown: bool,
+    form_focused: bool,
 ) {
     let pal = ctx.pal;
     let width = area.width as usize;
@@ -666,8 +699,11 @@ fn draw_item<H: CoreHit, B, A>(
     // Línea 1: marca, nombre y, si tiene un cambio sin aplicar, un punto.
     let name_style = if lit {
         Style::new().fg(pal.bright).add_modifier(Modifier::BOLD)
-    } else {
+    } else if form_focused {
         fg(pal.fg)
+    } else {
+        // El foco está en otro panel: las opciones se atenúan.
+        fg(pal.muted)
     };
     let dot_w = if changed { 2 } else { 0 };
     let mut l1 = vec![

@@ -138,5 +138,7 @@
   "val.off": "No",
   "val.on": "Sí",
   "btn.close": "Cerrar",
-  "status.pending": "{n} sin aplicar"
+  "status.pending": "{n} sin aplicar",
+  "btn.back": "Volver",
+  "ft.back": "volver"
 }
