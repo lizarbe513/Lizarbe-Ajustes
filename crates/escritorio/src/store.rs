@@ -26,9 +26,7 @@ use crate::hyprfile::{self, CustomBind, RenderCtx, Values};
 use crate::migrate;
 use crate::paths::Paths;
 use crate::sunset::{self, Night};
-use crate::themes;
 use crate::xcompose;
-use std::collections::BTreeMap;
 
 /// Un ajuste: opción de Hyprland o ajuste propio.
 #[derive(Debug, Clone, PartialEq)]
@@ -84,8 +82,6 @@ pub struct Store {
     pub xcompose: Vec<xcompose::Entry>,
     xcompose_orig: Vec<xcompose::Entry>,
     xcompose_raw: Option<String>,
-    /// Colores de temas con cambios pendientes: tema → (color → valor).
-    pub theme_edits: BTreeMap<String, BTreeMap<String, String>>,
 }
 
 fn read(path: &Path) -> Option<String> {
@@ -157,7 +153,6 @@ impl Store {
             xcompose: vec![],
             xcompose_orig: vec![],
             xcompose_raw: None,
-            theme_edits: BTreeMap::new(),
             paths,
         };
         s.reload();
@@ -385,19 +380,6 @@ impl Store {
         self.values != self.orig
             || self.autostart != self.autostart_orig
             || self.xcompose != self.xcompose_orig
-            || !self.theme_edits.is_empty()
-    }
-
-    /// Colores de un tema tal como están en disco.
-    pub fn theme_colors(&self, slug: &str) -> Vec<(String, String)> {
-        std::fs::read_to_string(self.paths.theme_dirs().colors_file(slug))
-            .map(|t| themes::parse_colors(&t))
-            .unwrap_or_default()
-    }
-
-    /// Recarga lo que depende de los temas en disco, sin perder lo pendiente.
-    pub fn theme_dirs(&self) -> themes::Dirs {
-        self.paths.theme_dirs()
     }
 
     pub fn discard(&mut self) {
@@ -408,7 +390,6 @@ impl Store {
 
     pub fn discard_compose(&mut self) {
         self.xcompose = self.xcompose_orig.clone();
-        self.theme_edits.clear();
     }
 
     /// Deshace los cambios pendientes del inicio automático.
@@ -491,16 +472,6 @@ impl Store {
                 old: None,
                 new: Some(Value::Bool(e.enabled)),
             });
-        }
-        for (slug, edits) in &self.theme_edits {
-            let disk = self.theme_colors(slug);
-            for (k, v) in edits {
-                out.push(Change {
-                    key: format!("th:{slug}:{k}"),
-                    old: disk.iter().find(|(dk, _)| dk == k).map(|(_, dv)| json!(dv)),
-                    new: Some(json!(v)),
-                });
-            }
         }
         for o in &self.xcompose_orig {
             let now = self.xcompose.iter().find(|e| e.line == o.line);
@@ -608,20 +579,6 @@ impl Store {
                 autostart::render(self.autostart_raw.as_deref().unwrap_or(""), &self.autostart);
             tx.write(&self.paths.autostart_lua(), &text)?;
         }
-        // Colores de temas propios.
-        let theme_dirs = self.paths.theme_dirs();
-        let mut applied_themes = vec![];
-        for (slug, edits) in &self.theme_edits {
-            if !theme_dirs.is_user(slug) {
-                continue;
-            }
-            let file = theme_dirs.colors_file(slug);
-            let text = read(&file).unwrap_or_default();
-            let changes: Vec<(String, String)> =
-                edits.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            tx.write(&file, &themes::set_colors(&text, &changes))?;
-            applied_themes.push(slug.clone());
-        }
         let compose_changed = self.xcompose != self.xcompose_orig;
         if compose_changed {
             let text = xcompose::render(self.xcompose_raw.as_deref().unwrap_or(""), &self.xcompose);
@@ -655,14 +612,6 @@ impl Store {
                 let _ = ipc::run("omarchy-restart-hyprsunset", &[]);
             }
         }
-        if !self.paths.sandbox {
-            // Si se editó el tema en uso, se vuelve a aplicar para verlo.
-            let current = self.paths.current_theme();
-            if applied_themes.contains(&current) {
-                let _ = ipc::run("omarchy-theme-set", &[&current]);
-            }
-        }
-        self.theme_edits.clear();
         if let Some(code) = language
             && !self.paths.sandbox
         {
@@ -719,29 +668,12 @@ fn autostart_index(key: &str) -> Option<usize> {
 }
 
 /// Índice de un atajo de texto en una clave `xc:<i>`.
-/// `th:<tema>:<color>` → (tema, color).
-fn theme_key(key: &str) -> Option<(&str, &str)> {
-    key.strip_prefix("th:")?.split_once(':')
-}
-
 fn xcompose_index(key: &str) -> Option<usize> {
     key.strip_prefix("xc:")?.parse().ok()
 }
 
 impl FieldStore<Bind> for Store {
     fn get(&self, bind: &Bind) -> Option<Value> {
-        if let Some((slug, k)) = theme_key(&bind.0) {
-            let edited = self.theme_edits.get(slug).and_then(|m| m.get(k));
-            return edited
-                .cloned()
-                .or_else(|| {
-                    self.theme_colors(slug)
-                        .into_iter()
-                        .find(|(ck, _)| ck == k)
-                        .map(|(_, v)| v)
-                })
-                .map(|v| json!(v));
-        }
         if let Some(i) = xcompose_index(&bind.0) {
             return self.xcompose.get(i).map(|e| json!(e.text));
         }
@@ -759,13 +691,6 @@ impl FieldStore<Bind> for Store {
     }
 
     fn get_original(&self, bind: &Bind) -> Option<Value> {
-        if let Some((slug, k)) = theme_key(&bind.0) {
-            return self
-                .theme_colors(slug)
-                .into_iter()
-                .find(|(ck, _)| ck == k)
-                .map(|(_, v)| json!(v));
-        }
         if let Some(i) = xcompose_index(&bind.0) {
             let e = self.xcompose.get(i)?;
             return self
@@ -795,25 +720,6 @@ impl FieldStore<Bind> for Store {
     /// Igualar el valor de Omarchy equivale a no fijarlo: así el archivo
     /// solo guarda lo que de verdad cambia.
     fn set_field(&mut self, bind: &Bind, value: Value, default: Option<&Value>) {
-        if let Some((slug, k)) = theme_key(&bind.0) {
-            let (slug, k) = (slug.to_string(), k.to_string());
-            let new = value.as_str().unwrap_or_default().to_string();
-            let disk = self
-                .theme_colors(&slug)
-                .into_iter()
-                .find(|(ck, _)| *ck == k)
-                .map(|(_, v)| v);
-            let map = self.theme_edits.entry(slug.clone()).or_default();
-            if disk.as_deref() == Some(new.as_str()) {
-                map.remove(&k);
-            } else {
-                map.insert(k, new);
-            }
-            if map.is_empty() {
-                self.theme_edits.remove(&slug);
-            }
-            return;
-        }
         if let Some(i) = xcompose_index(&bind.0) {
             if let (Some(e), Some(t)) = (self.xcompose.get_mut(i), value.as_str()) {
                 e.text = t.to_string();
@@ -859,16 +765,6 @@ impl FieldStore<Bind> for Store {
     }
 
     fn unset(&mut self, bind: &Bind) {
-        if let Some((slug, k)) = theme_key(&bind.0) {
-            let slug = slug.to_string();
-            if let Some(m) = self.theme_edits.get_mut(&slug) {
-                m.remove(k);
-                if m.is_empty() {
-                    self.theme_edits.remove(&slug);
-                }
-            }
-            return;
-        }
         if let Some(i) = xcompose_index(&bind.0) {
             let orig = self
                 .get_original(bind)

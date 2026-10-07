@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Crear tema
+Name[en]=New Theme
+GenericName=Estudio de temas de Omarchy
+GenericName[en]=Omarchy theme studio
+Comment=Crea y edita temas completos de Omarchy: colores, fondos, iconos y más, con vista previa en vivo
+Comment[en]=Create and edit complete Omarchy themes: colors, wallpapers, icons and more, with a live preview
+Exec=omarchy-launch-tui --app-id=org.omarchy.lizarbe-temas lizarbe-temas
+Icon=preferences-desktop-theme
+Terminal=false
+Type=Application
+Categories=Settings;DesktopSettings;
+Keywords=tema;theme;colores;colors;fondos;wallpapers;iconos;icons;omarchy;estudio;lizarbe;tui;

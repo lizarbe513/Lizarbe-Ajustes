@@ -174,6 +174,7 @@ fn draw_window<T: PopupTypes, H: CoreHit>(
             buttons_at(f, ctx, popup, inner);
         }
         Popup::Picker(p) => draw_big_picker(f, ctx, area, w, popup, p),
+        Popup::Color(c) => draw_color(f, ctx, area, popup, c),
         Popup::Checklist(c) => {
             let body_h = (c.opts.len() as u16 + 2).min(max_body);
             let r = centered(area, w, body_h + 2 + buttons_h);
@@ -230,6 +231,133 @@ fn buttons_at<T: PopupTypes, H: CoreHit>(
     }
     let y = inner.bottom() - 1;
     draw_modal_buttons(f, ctx, popup, Rect::new(inner.x, y, inner.width, 1));
+}
+
+/// Selector de color: barras de tono, saturación y luminosidad, hex y muestras.
+fn draw_color<T: PopupTypes, H: CoreHit>(
+    f: &mut Frame,
+    ctx: &mut Ctx<H>,
+    area: Rect,
+    popup: &Popup<T>,
+    c: &crate::popup::ColorPick<T>,
+) {
+    use crate::color::{from_hsl, parse_hex};
+    use ratatui::style::Color;
+    let pal = ctx.pal;
+    let w = 62u16.min(area.width.saturating_sub(2));
+    let r = centered(area, w, 15);
+    let inner = frame(f, pal, r, &c.title);
+    let bar_w = (inner.width as usize).saturating_sub(24).clamp(12, 40);
+    let rgb = |c: (u8, u8, u8)| Color::Rgb(c.0, c.1, c.2);
+    let names = [
+        ("H", c.h / 360.0, format!("{:>3.0}°", c.h)),
+        ("S", c.s, format!("{:>3.0}%", c.s * 100.0)),
+        ("L", c.l, format!("{:>3.0}%", c.l * 100.0)),
+    ];
+    for (i, (name, frac, label)) in names.iter().enumerate() {
+        let y = inner.y + 1 + i as u16 * 2;
+        let active = c.chan == i;
+        let pos = ((frac.clamp(0.0, 1.0)) * (bar_w as f32 - 1.0)).round() as usize;
+        let mut spans = vec![
+            Span::styled(
+                if active { "  ▍" } else { "   " },
+                fg(pal.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{name} "),
+                if active {
+                    fg(pal.bright).add_modifier(Modifier::BOLD)
+                } else {
+                    fg(pal.muted)
+                },
+            ),
+        ];
+        for k in 0..bar_w {
+            let t = k as f32 / (bar_w as f32 - 1.0);
+            let col = match i {
+                0 => from_hsl(t * 360.0, c.s.max(0.75), c.l.clamp(0.35, 0.65)),
+                1 => from_hsl(c.h, t, c.l),
+                _ => from_hsl(c.h, c.s, t),
+            };
+            if k == pos {
+                spans.push(Span::styled(
+                    "●",
+                    Style::new()
+                        .fg(pal.bright)
+                        .bg(rgb(col))
+                        .add_modifier(Modifier::BOLD),
+                ));
+            } else {
+                spans.push(Span::styled("█", fg(rgb(col))));
+            }
+        }
+        spans.push(Span::styled(format!("  {label}"), fg(pal.fg)));
+        put(f, inner.x, y, spans);
+    }
+    // Hex, antes y ahora.
+    let y = inner.y + 7;
+    let text: String = c.text.iter().collect();
+    let shown = if text.starts_with('#') {
+        text.clone()
+    } else {
+        format!("#{text}")
+    };
+    let active = c.chan == 3;
+    put(
+        f,
+        inner.x,
+        y,
+        vec![
+            Span::styled(
+                if active { "  ▍" } else { "   " },
+                fg(pal.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                "# ",
+                if active {
+                    fg(pal.bright)
+                } else {
+                    fg(pal.muted)
+                },
+            ),
+            Span::styled(
+                format!("{:<8}", shown.trim_start_matches('#')),
+                if active {
+                    fg(pal.bright).add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
+                } else {
+                    fg(pal.fg)
+                },
+            ),
+            Span::styled("   antes ", fg(pal.muted)),
+            Span::styled("██", fg(rgb(parse_hex(&c.original).unwrap_or((0, 0, 0))))),
+            Span::styled("   ahora ", fg(pal.muted)),
+            Span::styled("██", fg(rgb(c.rgb()))),
+        ],
+    );
+    if active {
+        let cx = inner.x + 5 + shown.trim_start_matches('#').chars().count() as u16;
+        f.set_cursor_position(Position::new(cx.min(inner.right().saturating_sub(1)), y));
+    }
+    // Muestras del tema (1-9).
+    if !c.swatches.is_empty() {
+        let mut spans = vec![Span::raw("   ")];
+        for (i, hex) in c.swatches.iter().take(9).enumerate() {
+            let col = rgb(parse_hex(hex).unwrap_or((0, 0, 0)));
+            spans.push(Span::styled(format!("{}", i + 1), fg(pal.muted)));
+            spans.push(Span::styled("██ ", fg(col)));
+        }
+        put(f, inner.x, inner.y + 9, spans);
+    }
+    put(
+        f,
+        inner.x + 3,
+        inner.y + 10,
+        vec![Span::styled(
+            "←→ ajustar · ⇧ más rápido · ↑↓ canal · r original",
+            fg(pal.dim),
+        )],
+    );
+    buttons_at(f, ctx, popup, inner);
 }
 
 /// Selector grande (añadir widget): buscador, lista agrupada y detalle.

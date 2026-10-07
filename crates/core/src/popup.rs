@@ -119,6 +119,100 @@ impl<T: PopupTypes> Picker<T> {
     }
 }
 
+/// Selector de color: tono, saturación y luminosidad con barras de color, más
+/// un campo hex. Los cambios se ven en vivo en lo que haya debajo.
+#[derive(Debug, Clone)]
+pub struct ColorPick<T: PopupTypes> {
+    pub title: String,
+    pub target: PickTarget<T>,
+    /// Color con el que se abrió (se recupera con Esc).
+    pub original: String,
+    pub h: f32,
+    pub s: f32,
+    pub l: f32,
+    /// 0 = tono, 1 = saturación, 2 = luminosidad, 3 = hex.
+    pub chan: usize,
+    pub text: Vec<char>,
+    /// Colores sugeridos (los del tema) para elegir con 1-9.
+    pub swatches: Vec<String>,
+}
+
+impl<T: PopupTypes> ColorPick<T> {
+    pub fn new(title: String, target: PickTarget<T>, hex: &str, swatches: Vec<String>) -> Self {
+        let rgb = crate::color::parse_hex(hex).unwrap_or((128, 128, 128));
+        let (h, s, l) = crate::color::to_hsl(rgb);
+        let mut pick = ColorPick {
+            title,
+            target,
+            original: crate::color::to_hex(rgb),
+            h,
+            s,
+            l,
+            chan: 2,
+            text: vec![],
+            swatches,
+        };
+        pick.sync_text();
+        pick
+    }
+
+    pub fn rgb(&self) -> (u8, u8, u8) {
+        crate::color::from_hsl(self.h, self.s, self.l)
+    }
+
+    pub fn hex(&self) -> String {
+        crate::color::to_hex(self.rgb())
+    }
+
+    fn sync_text(&mut self) {
+        self.text = self.hex().chars().collect();
+    }
+
+    /// Fija el color desde un hex (también actualiza H, S y L).
+    pub fn set_hex(&mut self, hex: &str) {
+        if let Some(rgb) = crate::color::parse_hex(hex) {
+            let (h, s, l) = crate::color::to_hsl(rgb);
+            self.h = h;
+            // en grises el tono no importa: se conserva el que había
+            if s > 0.0 || l <= 0.0 || l >= 1.0 {
+                self.s = s;
+            } else {
+                self.s = 0.0;
+            }
+            if s > 0.0 {
+                self.h = h;
+            }
+            self.l = l;
+            self.sync_text();
+        }
+    }
+
+    /// Aplica el hex que se está escribiendo (si ya es válido) sin reescribir el texto.
+    fn set_text_keep(&mut self, text: &str) {
+        let t = text.trim_start_matches('#');
+        if t.len() == 6
+            && let Some(rgb) = crate::color::parse_hex(t)
+        {
+            let (h, s, l) = crate::color::to_hsl(rgb);
+            if s > 0.0 {
+                self.h = h;
+            }
+            self.s = s;
+            self.l = l;
+        }
+    }
+
+    fn nudge(&mut self, dir: f32, big: bool) {
+        let k = if big { 10.0 } else { 1.0 };
+        match self.chan {
+            0 => self.h = (self.h + dir * 3.0 * k).rem_euclid(360.0),
+            1 => self.s = (self.s + dir * 0.02 * k).clamp(0.0, 1.0),
+            _ => self.l = (self.l + dir * 0.02 * k).clamp(0.0, 1.0),
+        }
+        self.sync_text();
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Checklist<T: PopupTypes> {
     pub title: String,
@@ -171,6 +265,7 @@ pub enum Popup<T: PopupTypes> {
     },
     Input(Input<T>),
     Picker(Picker<T>),
+    Color(ColorPick<T>),
     Checklist(Checklist<T>),
     Help {
         scroll: u16,
@@ -194,6 +289,7 @@ impl<T: PopupTypes> Popup<T> {
             Popup::Input(_) | Popup::Checklist(_) => {
                 vec![("mb.cancel", KeyCode::Esc), ("mb.save", KeyCode::Enter)]
             }
+            Popup::Color(_) => vec![("mb.cancel", KeyCode::Esc), ("mb.ok", KeyCode::Enter)],
             Popup::Picker(p) if p.anchor.is_none() => {
                 vec![("mb.cancel", KeyCode::Esc), ("mb.choose", KeyCode::Enter)]
             }
@@ -302,6 +398,68 @@ impl<T: PopupTypes> Popup<T> {
                     edit_line(input, key);
                     Outcome::Stay
                 }
+            },
+            Popup::Color(c) => match key.code {
+                KeyCode::Esc => Outcome::Close,
+                KeyCode::Enter => Outcome::Picked(c.target.clone(), serde_json::json!(c.hex())),
+                KeyCode::Up => {
+                    c.chan = c.chan.saturating_sub(1);
+                    Outcome::Stay
+                }
+                KeyCode::Down | KeyCode::Tab => {
+                    c.chan = (c.chan + 1) % 4;
+                    Outcome::Stay
+                }
+                KeyCode::BackTab => {
+                    c.chan = (c.chan + 3) % 4;
+                    Outcome::Stay
+                }
+                KeyCode::Left | KeyCode::Right if c.chan < 3 => {
+                    let dir = if key.code == KeyCode::Left { -1.0 } else { 1.0 };
+                    c.nudge(dir, key.modifiers.contains(KeyModifiers::SHIFT));
+                    Outcome::Stay
+                }
+                KeyCode::Backspace if c.chan == 3 => {
+                    c.text.pop();
+                    let t: String = c.text.iter().collect();
+                    c.set_text_keep(&t);
+                    Outcome::Stay
+                }
+                KeyCode::Char(ch) if c.chan == 3 && (ch.is_ascii_hexdigit() || ch == '#') => {
+                    if ch != '#' && c.text.len() < 7 {
+                        if c.text.first() != Some(&'#') {
+                            c.text.insert(0, '#');
+                        }
+                        c.text.push(ch);
+                    }
+                    let t: String = c.text.iter().collect();
+                    c.set_text_keep(&t);
+                    Outcome::Stay
+                }
+                KeyCode::Char(ch @ '1'..='9') if c.chan != 3 => {
+                    if let Some(hex) = c.swatches.get(ch as usize - '1' as usize).cloned() {
+                        c.set_hex(&hex);
+                    }
+                    Outcome::Stay
+                }
+                KeyCode::Char('h') | KeyCode::Char('H') => {
+                    c.chan = 0;
+                    Outcome::Stay
+                }
+                KeyCode::Char('s') | KeyCode::Char('S') if c.chan != 3 => {
+                    c.chan = 1;
+                    Outcome::Stay
+                }
+                KeyCode::Char('l') | KeyCode::Char('L') if c.chan != 3 => {
+                    c.chan = 2;
+                    Outcome::Stay
+                }
+                KeyCode::Char('r') if c.chan != 3 => {
+                    let o = c.original.clone();
+                    c.set_hex(&o);
+                    Outcome::Stay
+                }
+                _ => Outcome::Stay,
             },
             Popup::Picker(p) => {
                 let vis = p.visible();

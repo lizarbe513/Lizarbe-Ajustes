@@ -19,3 +19,19 @@ toml = "1.1.6"
 toml_edit = "0.25.15"
 unicode-width = "0.2.2"
 tempfile = "3.27.0"
+
+# Las imágenes se decodifican y reducen mucho más rápido optimizadas (y las pruebas con ellas también).
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3

@@ -3,7 +3,6 @@
 //! Cancelar · Aplicar, menú contextual y ayuda.
 
 mod lists;
-mod themes_ui;
 
 use std::cell::OnceCell;
 use std::time::{Duration, Instant};
@@ -136,9 +135,6 @@ pub enum Act {
     ClearSearch,
     AddAutostart,
     AddCompose,
-    NewTheme,
-    OpenTheme(String),
-    CloseTheme,
 }
 
 /// Qué recibe la combinación que se está grabando.
@@ -170,7 +166,6 @@ pub enum Confirm {
     RestoreAutostart,
     /// Importar los ajustes de Meca y retirarlo.
     MigrateMeca,
-    DeleteTheme(String),
 }
 
 /// Cuadros de texto propios de Escritorio.
@@ -178,8 +173,6 @@ pub enum Confirm {
 pub enum EInput {
     BindFilter,
     ComposeKeys,
-    ThemeName,
-    ThemeDuplicate(String),
     ComposeText(String),
     BindCommand(String),
     BindWeb(String),
@@ -193,8 +186,6 @@ pub enum EPick {
     BindKind(String),
     BindApp(String),
     AutostartApp,
-    /// Tema base para un tema nuevo (con el nombre ya escrito).
-    ThemeBase(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -206,9 +197,6 @@ pub enum MenuAct {
     CustomRemove(usize),
     AutostartRemove(usize),
     ComposeRemove(usize),
-    ThemeApply(usize),
-    ThemeDuplicate(usize),
-    ThemeDelete(usize),
     Apply,
     Cancel,
     Restore,
@@ -253,7 +241,6 @@ pub struct App {
     pub hover: Option<Hit>,
     pub quit: bool,
     /// Tema cuyos colores se están editando.
-    pub editing_theme: Option<String>,
     /// Filtro de la lista de atajos.
     pub bind_filter: String,
     /// Grabación de una combinación en curso.
@@ -280,7 +267,6 @@ impl App {
             hits: vec![],
             hover: None,
             quit: false,
-            editing_theme: None,
             bind_filter: String::new(),
             recording: None,
             apps: OnceCell::new(),
@@ -350,7 +336,6 @@ impl App {
             Section::Keybinds => self.keybind_rows(),
             Section::Autostart => self.autostart_rows(),
             Section::Compose => self.compose_rows(),
-            Section::Themes => self.theme_rows(),
             s => self.settings_rows(s),
         }
     }
@@ -614,9 +599,6 @@ impl App {
         self.form_state().clamp(&rows);
         let sel = self.form_state().sel;
         match key.code {
-            KeyCode::Esc if self.section == Section::Themes && self.editing_theme.is_some() => {
-                self.editing_theme = None;
-            }
             KeyCode::Esc => self.focus = Focus::Sidebar,
             KeyCode::Up | KeyCode::Char('k') => self.form_state().step(&rows, false),
             KeyCode::Down | KeyCode::Char('j') => self.form_state().step(&rows, true),
@@ -708,7 +690,6 @@ impl App {
             ),
             Section::Autostart => (vec![], "restore.autostart"),
             Section::Compose => (vec![], "restore.compose"),
-            Section::Themes => (vec![], "restore.themes"),
             Section::Language => (
                 self.store
                     .values
@@ -750,10 +731,7 @@ impl App {
 
     fn request_restore(&mut self) {
         let (keys, k) = self.restore_scope();
-        let action = if matches!(
-            self.section,
-            Section::Autostart | Section::Compose | Section::Themes
-        ) {
+        let action = if matches!(self.section, Section::Autostart | Section::Compose) {
             Confirm::RestoreAutostart
         } else {
             Confirm::Restore(keys)
@@ -846,7 +824,6 @@ impl App {
                     }
                     Confirm::Quit => self.quit = true,
                     Confirm::BindAssign { target, keys } => self.assign(target, keys),
-                    Confirm::DeleteTheme(slug) => self.delete_theme(&slug),
                     Confirm::MigrateMeca => match self.store.migrate_meca() {
                         Ok(r) => self.toast(
                             tf(
@@ -858,9 +835,7 @@ impl App {
                         Err(e) => self.message(t("mig.failed"), vec![format!("{e:#}")]),
                     },
                     Confirm::RestoreAutostart => {
-                        if self.section == Section::Themes {
-                            self.store.theme_edits.clear();
-                        } else if self.section == Section::Compose {
+                        if self.section == Section::Compose {
                             self.store.discard_compose();
                         } else {
                             self.store.discard_autostart();
@@ -1148,23 +1123,6 @@ impl App {
                         MenuAct::ResetField(i),
                         f.value.is_some(),
                     ));
-                } else if let Some(Row::Action(_, Act::OpenTheme(slug))) = rows.get(i)
-                    && let Some(n) = self
-                        .store
-                        .theme_dirs()
-                        .list_user()
-                        .iter()
-                        .position(|s| s == slug)
-                {
-                    items.push(item("󰏫", t("th.edit"), MenuAct::Activate(i), true));
-                    items.push(item("󰸌", t("th.apply"), MenuAct::ThemeApply(n), true));
-                    items.push(item(
-                        "󰆏",
-                        t("th.duplicate"),
-                        MenuAct::ThemeDuplicate(n),
-                        true,
-                    ));
-                    items.push(item("󰆴", t("th.delete"), MenuAct::ThemeDelete(n), true));
                 }
             }
             Some(Hit::Sidebar(i)) => self.section = Section::ALL[i],
@@ -1234,9 +1192,6 @@ impl App {
             MenuAct::CustomRemove(n) => self.remove_custom(n),
             MenuAct::AutostartRemove(n) => self.remove_autostart(n),
             MenuAct::ComposeRemove(n) => self.remove_compose(n),
-            MenuAct::ThemeApply(i) => self.theme_apply(i),
-            MenuAct::ThemeDuplicate(i) => self.theme_duplicate(i),
-            MenuAct::ThemeDelete(i) => self.theme_delete(i),
             MenuAct::Apply => self.request_apply(),
             MenuAct::Cancel => self.request_discard(),
             MenuAct::Restore => self.request_restore(),

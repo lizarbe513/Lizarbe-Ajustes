@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::form::{FieldRow, input_error, input_text};
 use crate::i18n::t;
 use crate::popup::{
-    Checklist, Input, InputTarget, PickItem, PickTarget, Picker, Popup, PopupTypes,
+    Checklist, ColorPick, Input, InputTarget, PickItem, PickTarget, Picker, Popup, PopupTypes,
 };
 use crate::schema::{self, Kind, clamp_float};
 
@@ -63,6 +63,19 @@ pub fn activate<T: PopupTypes>(
                 sel: 0,
                 bind: f.bind.clone(),
             }))
+        }
+        Kind::Color if def.presets.is_empty() => {
+            let cur = f
+                .effective()
+                .and_then(Value::as_str)
+                .unwrap_or("#808080")
+                .to_string();
+            Activation::Open(Popup::Color(ColorPick::new(
+                def.label.clone(),
+                target(),
+                &cur,
+                vec![],
+            )))
         }
         _ if !def.presets.is_empty() => {
             let mut items: Vec<PickItem> = def.presets.iter().map(PickItem::from_opt).collect();

@@ -25,12 +25,11 @@ pub enum Section {
     NightLight,
     Compose,
     Language,
-    Themes,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 13] = [
+    pub const ALL: [Section; 12] = [
         Section::Appearance,
         Section::Windows,
         Section::Monitors,
@@ -42,7 +41,6 @@ impl Section {
         Section::NightLight,
         Section::Compose,
         Section::Language,
-        Section::Themes,
         Section::Changes,
     ];
 
@@ -59,7 +57,6 @@ impl Section {
             "teclado" | "keyboard" => Section::Keyboard,
             "mouse" | "raton" | "ratón" | "touchpad" => Section::Mouse,
             "cursor" => Section::Cursor,
-            "temas" | "themes" | "tema" => Section::Themes,
             "atajos" | "keybinds" | "shortcuts" | "bindings" => Section::Keybinds,
             "inicio" | "autostart" => Section::Autostart,
             "luz" | "nightlight" | "night" => Section::NightLight,
@@ -83,7 +80,6 @@ impl Section {
             Section::NightLight => "nightlight",
             Section::Compose => "compose",
             Section::Language => "language",
-            Section::Themes => "themes",
             Section::Changes => "changes",
         }
     }
@@ -101,7 +97,6 @@ impl Section {
             Section::NightLight => "󰖔",
             Section::Compose => "󰞅",
             Section::Language => "󰗊",
-            Section::Themes => "󰸌",
             Section::Changes => "󰄬",
         }
     }
@@ -136,7 +131,6 @@ pub const CATEGORIES: [(&str, &[Section]); 4] = [
             Section::NightLight,
             Section::Compose,
             Section::Language,
-            Section::Themes,
         ],
     ),
     ("cat.review", &[Section::Changes]),
@@ -219,11 +213,7 @@ pub fn groups(section: Section, ctx: &Ctx) -> Vec<Group> {
         // Listas propias: las construye la aplicación.
         Section::NightLight => nightlight(),
         Section::Language => language(),
-        Section::Keybinds
-        | Section::Autostart
-        | Section::Compose
-        | Section::Themes
-        | Section::Changes => vec![],
+        Section::Keybinds | Section::Autostart | Section::Compose | Section::Changes => vec![],
     }
 }
 

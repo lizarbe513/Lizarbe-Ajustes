@@ -259,6 +259,11 @@ fn footer_hints(app: &App) -> Vec<Hint> {
                 k("Esc", "ft.cancel", 3),
                 k("Ctrl+U", "ft.clear", 1),
             ],
+            Popup::Color(_) => vec![
+                k("←→", "ft.change", 3),
+                k("Enter", "ft.save", 3),
+                k("Esc", "ft.cancel", 3),
+            ],
             Popup::Picker(_) => vec![
                 k("↑↓", "ft.move", 1),
                 k("Enter", "ft.choose", 3),
