@@ -279,5 +279,8 @@
   "w.settings": "Ajustes",
   "conflict.body": "{files} se modificó fuera de Widgets (por ejemplo, al arrastrar un widget en la barra) mientras tenías cambios pendientes.",
   "hint.close": "Cierra Widgets (pregunta si hay cambios sin aplicar)",
-  "hint.back": "Vuelve atrás: del contenido al menú, o cierra la sección abierta"
+  "hint.back": "Vuelve atrás: del contenido al menú, o cierra la sección abierta",
+  "hint.search_options": "Buscar una opción en todas las secciones",
+  "ft.search": "buscar",
+  "help.search": "Buscar una opción"
 }

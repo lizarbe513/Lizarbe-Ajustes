@@ -83,6 +83,7 @@ pub enum Hit {
     Button(usize),
     Close,
     Back,
+    Search,
 }
 
 impl CoreHit for Hit {
@@ -103,6 +104,9 @@ impl CoreHit for Hit {
     }
     fn back() -> Self {
         Hit::Back
+    }
+    fn search() -> Self {
+        Hit::Search
     }
     fn mode_toggle() -> Self {
         Hit::ModeToggle
@@ -135,6 +139,10 @@ pub enum Act {
     ClearSearch,
     AddAutostart,
     AddCompose,
+    /// Cambiar la tecla de captura de pantalla (graba la combinación).
+    CapShortcut,
+    /// Ir a Atajos mostrando solo los que contienen este texto.
+    OpenBinds(&'static str),
 }
 
 /// Qué recibe la combinación que se está grabando.
@@ -186,6 +194,8 @@ pub enum EPick {
     BindKind(String),
     BindApp(String),
     AutostartApp,
+    /// Búsqueda de opciones: salta a la elegida.
+    Search,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -248,6 +258,7 @@ pub struct App {
     /// Aplicaciones instaladas (se leen la primera vez que hacen falta).
     apps: OnceCell<Vec<DesktopApp>>,
     last_check: Instant,
+    palette_watch: lizarbe_core::theme::PaletteWatcher,
     last_click: Option<(Instant, Hit)>,
 }
 
@@ -255,6 +266,7 @@ impl App {
     pub fn new(store: Store, prefs: Prefs) -> App {
         App {
             pal: Palette::load(&store.paths.theme_colors()),
+            palette_watch: lizarbe_core::theme::PaletteWatcher::new(&store.paths.theme_colors()),
             advanced: prefs.advanced,
             store,
             prefs,
@@ -296,6 +308,7 @@ impl App {
     /// Avisos que caducan y recarga si `escritorio.lua` cambió por fuera.
     pub fn tick(&mut self) {
         self.poll_record();
+        self.palette_watch.poll(&mut self.pal);
         if self
             .toast
             .as_ref()
@@ -336,8 +349,36 @@ impl App {
             Section::Keybinds => self.keybind_rows(),
             Section::Autostart => self.autostart_rows(),
             Section::Compose => self.compose_rows(),
+            Section::Screenshots => self.capture_rows(),
             s => self.settings_rows(s),
         }
+    }
+
+    /// Capturas: los ajustes de siempre más el atajo y los enlaces a otros.
+    fn capture_rows(&self) -> Vec<Row> {
+        let mut rows = self.settings_rows(Section::Screenshots);
+        let keys = match self
+            .store
+            .values
+            .get(&format!("x:bind:{}", crate::capture::DEFAULT_KEYS))
+        {
+            Some(Value::String(k)) => k.clone(),
+            Some(_) => t("cap.disabled"),
+            None => crate::capture::DEFAULT_KEYS.to_string(),
+        };
+        rows.push(Row::Header(t("g.cap_keys")));
+        rows.push(Row::Action(
+            tf("cap.shortcut", &[("keys", &keys)]),
+            Act::CapShortcut,
+        ));
+        for (label, filter) in [
+            ("cap.link.rec", "Screenrecording"),
+            ("cap.link.color", "Color picker"),
+            ("cap.link.ocr", "OCR"),
+        ] {
+            rows.push(Row::Action(t(label), Act::OpenBinds(filter)));
+        }
+        rows
     }
 
     fn settings_rows(&self, section: Section) -> Vec<Row> {
@@ -480,7 +521,16 @@ impl App {
             self.popup = Some(popup);
             return self.handle_outcome(outcome);
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+            return self.open_search();
+        }
         match key.code {
+            // En Atajos, `/` sigue buscando atajos (Ctrl+F busca opciones).
+            KeyCode::Char('/')
+                if !(self.section == Section::Keybinds && self.focus == Focus::Content) =>
+            {
+                return self.open_search();
+            }
             KeyCode::Char('q') => return self.request_quit(),
             KeyCode::Char('?') => return self.open_help(),
             KeyCode::Char('a') => return self.request_apply(),
@@ -535,6 +585,84 @@ impl App {
             Focus::Sidebar => self.sidebar_key(key),
             Focus::Buttons => self.buttons_key(key),
             Focus::Content => self.form_key(key),
+        }
+    }
+
+    /// Todas las opciones que se pueden buscar, tal como se ven ahora.
+    pub fn search_entries(&self) -> Vec<lizarbe_core::search::Entry> {
+        use lizarbe_core::search::Entry;
+        let mut out = vec![];
+        for (si, s) in Section::ALL.iter().enumerate() {
+            out.push(Entry {
+                section: si,
+                section_title: s.title(),
+                group: String::new(),
+                key: String::new(),
+                label: s.title(),
+                // Sin descripción: así una búsqueda de palabras sueltas
+                // encuentra la opción y no la sección que la contiene.
+                desc: String::new(),
+            });
+            if *s == Section::Screenshots {
+                out.push(Entry {
+                    section: si,
+                    section_title: s.title(),
+                    group: t("g.cap_keys"),
+                    key: "cap:shortcut".into(),
+                    label: t("cap.shortcut.label"),
+                    desc: t("cap.shortcut.d"),
+                });
+            }
+            for g in groups(*s, &self.store.ctx) {
+                for def in g.fields {
+                    if (def.advanced && !self.advanced)
+                        || (def.key == "m:scale" && !self.store.global_scale_editable())
+                    {
+                        continue;
+                    }
+                    out.push(Entry {
+                        section: si,
+                        section_title: s.title(),
+                        group: g.title.clone(),
+                        key: def.key.clone(),
+                        label: def.label.clone(),
+                        desc: def.desc.clone(),
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    pub fn open_search(&mut self) {
+        let items = lizarbe_core::search::pick_items(&self.search_entries());
+        self.popup = Some(Popup::Picker(cp::Picker {
+            title: t("search.title"),
+            items,
+            sel: 0,
+            filter: String::new(),
+            target: PickTarget::App(EPick::Search),
+            current: None,
+            anchor: None,
+        }));
+    }
+
+    /// Salta a la sección y a la fila de la opción buscada.
+    fn jump_to(&mut self, section: usize, key: &str) {
+        let Some(s) = Section::ALL.get(section) else {
+            return;
+        };
+        self.go_section(*s);
+        if key.is_empty() {
+            return;
+        }
+        let rows = self.rows();
+        if let Some(i) = rows.iter().position(|r| match r {
+            Row::Field(f) => f.def.key == key,
+            Row::Action(_, Act::CapShortcut) => key == "cap:shortcut",
+            _ => false,
+        }) {
+            self.form_state().sel = i;
         }
     }
 
@@ -714,6 +842,9 @@ impl App {
                     .flat_map(|g| g.fields)
                     .map(|f| f.key)
                     .collect();
+                if s == Section::Screenshots {
+                    keys.push(format!("x:bind:{}", crate::capture::DEFAULT_KEYS));
+                }
                 if s == Section::Monitors {
                     // También las pantallas que ahora no están conectadas.
                     keys.extend(
@@ -1005,6 +1136,7 @@ impl App {
             }
             Some(Hit::Close) => self.request_quit(),
             Some(Hit::Back) => self.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Some(Hit::Search) => self.open_search(),
             Some(Hit::Sidebar(i)) => self.go_section(Section::ALL[i]),
             Some(Hit::ModeToggle) => self.on_key(key(KeyCode::Char('m'))),
             Some(Hit::LangToggle) => self.on_key(key(KeyCode::Char('i'))),
@@ -1217,6 +1349,7 @@ impl App {
             Hit::LangToggle => t("hint.lang"),
             Hit::Close => t("hint.close"),
             Hit::Back => t("hint.back"),
+            Hit::Search => t("hint.search_options"),
             Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
                 Row::Field(f) if Self::is_list_row(&f.bind.0) => {
                     format!("{} — {}", f.def.label, t("hint.bind"))
@@ -1274,6 +1407,7 @@ fn help_content() -> HelpContent {
                     ("← → / h l".into(), t("help.change")),
                     (format!("Enter / {}", t("key.space")), t("help.activate")),
                     (format!("r / {}", t("key.del")), t("help.reset")),
+                    ("/ · Ctrl+F".into(), t("help.search")),
                     ("o".into(), t("help.menu")),
                     ("a".into(), t("help.apply")),
                     ("c".into(), t("help.discard")),
@@ -1339,6 +1473,36 @@ mod tests {
         .unwrap();
         let store = Store::load(Paths::detect(Some(dir.path().to_path_buf())));
         (dir, App::new(store, Prefs::default()))
+    }
+
+    #[test]
+    fn search_jumps_to_the_option_in_another_section() {
+        let (_d, mut app) = app();
+        lizarbe_core::i18n::set_lang(lizarbe_core::i18n::Lang::Es);
+        assert_eq!(app.section, Section::Appearance);
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert!(matches!(app.popup, Some(Popup::Picker(_))));
+        for c in "cursor tamano".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.popup.is_none());
+        assert_eq!(app.section, Section::Cursor);
+        let rows = app.rows();
+        let sel = app.form_state().sel;
+        assert!(
+            matches!(&rows[sel], Row::Field(f) if f.def.key.contains("size")),
+            "{:?}",
+            rows.get(sel).map(|r| matches!(r, Row::Field(_)))
+        );
+    }
+
+    #[test]
+    fn ctrl_f_opens_the_search_from_the_keybinds_section() {
+        let (_d, mut app) = app();
+        app.go_section(Section::Keybinds);
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        assert!(matches!(app.popup, Some(Popup::Picker(_))));
     }
 
     #[test]

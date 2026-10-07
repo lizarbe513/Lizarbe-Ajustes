@@ -172,6 +172,8 @@ pub enum Hit {
     Button(usize),
     Close,
     Back,
+    /// Botón «Buscar» de la cabecera (la búsqueda de plugins es `Search`).
+    SearchOptions,
 }
 
 impl CoreHit for Hit {
@@ -192,6 +194,9 @@ impl CoreHit for Hit {
     }
     fn back() -> Self {
         Hit::Back
+    }
+    fn search() -> Self {
+        Hit::SearchOptions
     }
     fn mode_toggle() -> Self {
         Hit::ModeToggle
@@ -279,12 +284,14 @@ pub struct App {
     running: Option<ExecRequest>,
     pub shell_running: bool,
     last_check: Instant,
+    palette_watch: lizarbe_core::theme::PaletteWatcher,
     last_click: Option<(Instant, Hit)>,
 }
 
 impl App {
     pub fn new(store: Store, prefs: Prefs) -> App {
         let pal = Palette::load(&store.paths.theme_colors());
+        let palette_watch = lizarbe_core::theme::PaletteWatcher::new(&store.paths.theme_colors());
         let shell_running = !store.paths.sandbox && ipc::shell_running();
         App {
             advanced: prefs.advanced,
@@ -307,6 +314,7 @@ impl App {
             running: None,
             shell_running,
             last_check: Instant::now(),
+            palette_watch,
             last_click: None,
         }
     }
@@ -333,6 +341,7 @@ impl App {
     /// Tareas periódicas: caducidad de avisos y recarga si los archivos
     /// cambiaron por fuera (p. ej. al arrastrar widgets en la propia barra).
     pub fn tick(&mut self) {
+        self.palette_watch.poll(&mut self.pal);
         if self
             .toast
             .as_ref()
@@ -701,8 +710,17 @@ impl App {
             self.plugin_filter_key(key);
             return;
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('f') {
+            return self.open_search();
+        }
         // Teclas globales.
         match key.code {
+            // En Plugins, `/` filtra la lista (Ctrl+F busca opciones).
+            KeyCode::Char('/')
+                if !(self.section == Section::Plugins && self.focus == Focus::Content) =>
+            {
+                return self.open_search();
+            }
             KeyCode::Char('q') => return self.request_quit(),
             KeyCode::Char('?') => {
                 self.popup = Some(Popup::Help {
@@ -838,6 +856,82 @@ impl App {
             lines: vec![t(&format!("{k}.desc")), String::new(), t("restore.note")],
             action: Confirm::Restore(scope),
         });
+    }
+
+    /// Opciones que se pueden buscar: las secciones y los campos de Barra,
+    /// Reposo y Apariencia (la clave es la posición entre los campos).
+    pub fn search_entries(&self) -> Vec<lizarbe_core::search::Entry> {
+        use lizarbe_core::search::Entry;
+        let mut out = vec![];
+        for (si, s) in Section::ALL.iter().enumerate() {
+            out.push(Entry {
+                section: si,
+                section_title: s.title(),
+                group: String::new(),
+                key: String::new(),
+                label: s.title(),
+                desc: String::new(),
+            });
+            let rows = match s {
+                Section::Bar => self.bar_rows(),
+                Section::Idle => self.idle_rows(),
+                Section::Appearance => self.appearance_rows(),
+                _ => continue,
+            };
+            let mut group = String::new();
+            let mut n = 0;
+            for r in rows {
+                match r {
+                    Row::Header(h) => group = h,
+                    Row::Field(f) => {
+                        out.push(Entry {
+                            section: si,
+                            section_title: s.title(),
+                            group: group.clone(),
+                            key: n.to_string(),
+                            label: f.def.label.clone(),
+                            desc: f.def.desc.clone(),
+                        });
+                        n += 1;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        out
+    }
+
+    pub fn open_search(&mut self) {
+        let items = lizarbe_core::search::pick_items(&self.search_entries());
+        self.popup = Some(Popup::Picker(Picker {
+            anchor: None,
+            title: t("search.title"),
+            items,
+            sel: 0,
+            filter: String::new(),
+            current: None,
+            target: PickTarget::App(WPick::Search),
+        }));
+    }
+
+    fn jump_to(&mut self, section: usize, key: &str) {
+        let Some(s) = Section::ALL.get(section) else {
+            return;
+        };
+        self.go_section(*s);
+        let Ok(n) = key.parse::<usize>() else {
+            return;
+        };
+        let target = self
+            .rows()
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| matches!(r, Row::Field(_)))
+            .nth(n)
+            .map(|(i, _)| i);
+        if let Some(i) = target {
+            self.form_state().sel = i;
+        }
     }
 
     pub fn go_section(&mut self, s: Section) {
@@ -1478,6 +1572,11 @@ impl App {
                     self.store.set_field(&bind, value, def.default.as_ref());
                 }
             }
+            PickTarget::App(WPick::Search) => {
+                if let Some((section, key)) = lizarbe_core::search::decode(&value) {
+                    self.jump_to(section, &key);
+                }
+            }
             PickTarget::App(WPick::AddWidget { at }) => {
                 if value == json!(PICK_CMD) || value == json!(PICK_QML) {
                     let qml = value == json!(PICK_QML);
@@ -1684,6 +1783,7 @@ impl App {
             }
             Some(Hit::Close) => self.request_quit(),
             Some(Hit::Back) => self.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+            Some(Hit::SearchOptions) => self.open_search(),
             Some(Hit::Sidebar(i)) => {
                 self.section = Section::ALL[i];
                 self.focus = Focus::Content;
@@ -2048,6 +2148,7 @@ impl App {
             Hit::LangToggle => t("hint.lang"),
             Hit::Close => t("hint.close"),
             Hit::Back => t("hint.back"),
+            Hit::SearchOptions => t("hint.search_options"),
             Hit::Row(i) | Hit::Ctrl(i, Sub::Main) => match self.rows().get(i)? {
                 Row::Field(f) => {
                     let what = match f.def.kind {
@@ -2166,6 +2267,7 @@ fn help_content() -> HelpContent {
                     ("← → / h l".into(), t("help.change")),
                     (format!("Enter / {}", t("key.space")), t("help.activate")),
                     (format!("r / {}", t("key.del")), t("help.reset")),
+                    ("/ · Ctrl+F".into(), t("help.search")),
                     ("o".into(), t("help.menu")),
                     ("a".into(), t("help.apply")),
                     ("c".into(), t("help.discard")),

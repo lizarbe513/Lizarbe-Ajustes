@@ -211,6 +211,13 @@ impl App {
                 )))
             }
             Act::ClearSearch => self.bind_filter.clear(),
+            Act::CapShortcut => {
+                self.start_record(RecTarget::Move(crate::capture::DEFAULT_KEYS.into()))
+            }
+            Act::OpenBinds(filter) => {
+                self.bind_filter = filter.to_string();
+                self.go_section(crate::catalog::Section::Keybinds);
+            }
             Act::AddCompose => {
                 self.popup = Some(Popup::Input(Input::new(
                     t("xc.add"),
@@ -503,7 +510,14 @@ impl App {
 
     pub(super) fn on_pick(&mut self, pick: EPick, value: Value) {
         let text = value.as_str().unwrap_or_default().to_string();
+        if pick == EPick::Search {
+            if let Some((section, key)) = lizarbe_core::search::decode(&value) {
+                self.jump_to(section, &key);
+            }
+            return;
+        }
         match pick {
+            EPick::Search => {}
             EPick::BindKind(keys) => match text.as_str() {
                 "app" => {
                     let items = self

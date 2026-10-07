@@ -5,7 +5,8 @@
 //! bastante con el fondo, para que el diseño se lea con cualquier tema.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime};
 
 use ratatui::style::Color;
 
@@ -104,6 +105,52 @@ pub fn blend(a: (u8, u8, u8), b: (u8, u8, u8), ratio: f32) -> Color {
     Color::Rgb(m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
 }
 
+/// Vigila el `colors.toml` del tema activo y recarga la paleta si cambia
+/// (por ejemplo, tras `omarchy-theme-set`).
+#[derive(Debug)]
+pub struct PaletteWatcher {
+    path: PathBuf,
+    stamp: Option<(SystemTime, u64)>,
+    last_check: Instant,
+}
+
+impl PaletteWatcher {
+    const EVERY: Duration = Duration::from_millis(700);
+
+    pub fn new(path: &Path) -> PaletteWatcher {
+        PaletteWatcher {
+            path: path.to_path_buf(),
+            stamp: Self::stamp_of(path),
+            last_check: Instant::now(),
+        }
+    }
+
+    fn stamp_of(path: &Path) -> Option<(SystemTime, u64)> {
+        let m = std::fs::metadata(path).ok()?;
+        Some((m.modified().ok()?, m.len()))
+    }
+
+    /// Devuelve `true` si recargó la paleta.
+    pub fn poll(&mut self, pal: &mut Palette) -> bool {
+        if self.last_check.elapsed() < Self::EVERY {
+            return false;
+        }
+        self.last_check = Instant::now();
+        let now = Self::stamp_of(&self.path);
+        if now == self.stamp {
+            return false;
+        }
+        self.stamp = now;
+        *pal = Palette::load(&self.path);
+        true
+    }
+
+    #[cfg(test)]
+    fn force_due(&mut self) {
+        self.last_check = Instant::now() - Duration::from_secs(5);
+    }
+}
+
 impl Palette {
     pub fn load(colors_toml: &Path) -> Palette {
         let map: HashMap<String, String> = std::fs::read_to_string(colors_toml)
@@ -163,6 +210,25 @@ impl Palette {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn watcher_reloads_when_file_changes() {
+        let dir = std::env::temp_dir().join(format!("lz-pal-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("colors.toml");
+        std::fs::write(&f, "accent = \"#112233\"\n").unwrap();
+        let mut pal = Palette::load(&f);
+        let mut w = PaletteWatcher::new(&f);
+        w.force_due();
+        assert!(!w.poll(&mut pal));
+        std::fs::write(&f, "accent = \"#ff0000\"\nbackground = \"#000000\"\n").unwrap();
+        w.force_due();
+        assert!(w.poll(&mut pal));
+        assert_eq!(pal.accent, Color::Rgb(255, 0, 0));
+        w.force_due();
+        assert!(!w.poll(&mut pal));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
     use super::*;
 
     #[test]

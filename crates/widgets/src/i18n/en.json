@@ -279,5 +279,8 @@
   "w.settings": "Settings",
   "conflict.body": "{files} was modified outside Widgets (for example by dragging a widget on the bar) while you had pending changes.",
   "hint.close": "Close Widgets (asks if there are unapplied changes)",
-  "hint.back": "Go back: from the content to the menu, or close the open section"
+  "hint.back": "Go back: from the content to the menu, or close the open section",
+  "hint.search_options": "Find an option across all sections",
+  "ft.search": "search",
+  "help.search": "Find an option"
 }

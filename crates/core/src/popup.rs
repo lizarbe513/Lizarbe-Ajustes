@@ -104,15 +104,20 @@ pub use crate::ui::fold;
 impl<T: PopupTypes> Picker<T> {
     /// Índices visibles según el filtro.
     pub fn visible(&self) -> Vec<usize> {
+        // Varias palabras: todas deben aparecer (en cualquier orden).
         let f = fold(&self.filter);
+        let words: Vec<&str> = f.split_whitespace().collect();
         self.items
             .iter()
             .enumerate()
             .filter(|(_, it)| {
-                f.is_empty()
-                    || fold(&it.label).contains(&f)
-                    || fold(&it.detail).contains(&f)
-                    || fold(&it.group).contains(&f)
+                let hay = format!(
+                    "{} {} {}",
+                    fold(&it.label),
+                    fold(&it.detail),
+                    fold(&it.group)
+                );
+                words.iter().all(|w| hay.contains(w))
             })
             .map(|(i, _)| i)
             .collect()

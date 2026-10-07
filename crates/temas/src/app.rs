@@ -31,6 +31,7 @@ use crate::palette;
 
 pub type Popup = cp::Popup<T>;
 pub type Outcome = cp::Outcome<T>;
+pub type MenuItem = cp::MenuItem<T>;
 pub type Row2 = Row<Bind, Act>;
 
 /// Carpeta temporal del tema que se prueba en el escritorio.
@@ -58,13 +59,19 @@ pub enum TPick {
     Base,
     AddBackground,
     PaletteImage,
+    /// Búsqueda de opciones: salta a la elegida.
+    Search,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MenuAct {
-    Open,
-    Delete,
+    AddBackground,
+    RemoveBackground(usize),
+    MoveBackground(usize, bool),
+    RemoveInherited,
+    /// Fila de la lista de inicio.
+    OpenTheme(usize),
+    DeleteTheme(usize),
 }
 
 impl PopupTypes for T {
@@ -179,6 +186,7 @@ pub enum Hit {
     Button(usize),
     Close,
     Back,
+    Search,
     Keep,
     Revert,
 }
@@ -201,6 +209,9 @@ impl CoreHit for Hit {
     }
     fn back() -> Self {
         Hit::Back
+    }
+    fn search() -> Self {
+        Hit::Search
     }
     fn mode_toggle() -> Self {
         Hit::Close
@@ -284,9 +295,7 @@ pub struct App {
     cache_dir: PathBuf,
     /// Colores del tema activo de Omarchy: si cambian (por ejemplo al probar un
     /// tema) la interfaz recarga su paleta.
-    colors_path: PathBuf,
-    colors_mtime: Option<std::time::SystemTime>,
-    last_check: Instant,
+    palette_watch: lizarbe_core::theme::PaletteWatcher,
 }
 
 fn pretty(slug: &str) -> String {
@@ -327,11 +336,7 @@ impl App {
             catalog,
             rx: None,
             last_click: None,
-            colors_mtime: std::fs::metadata(&colors_path)
-                .and_then(|m| m.modified())
-                .ok(),
-            colors_path,
-            last_check: Instant::now(),
+            palette_watch: lizarbe_core::theme::PaletteWatcher::new(&colors_path),
             cache_dir,
         };
         app.reload_home();
@@ -570,11 +575,14 @@ impl App {
                     )));
                     for (i, p) in d.spec.backgrounds.iter().enumerate() {
                         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-                        let label = if i == 0 {
+                        let mut label = if i == 0 {
                             tf("bg.first", &[("name", name)])
                         } else {
                             name.to_string()
                         };
+                        if d.is_inherited(p) {
+                            label = format!("{label}  {}", t("bg.inherited"));
+                        }
                         rows.push(Row::Action(label, Act::Background(i)));
                     }
                 }
@@ -862,7 +870,11 @@ impl App {
         if self.screen == Screen::Home {
             return self.home_key(key);
         }
+        if ctrl && key.code == KeyCode::Char('f') {
+            return self.open_search();
+        }
         match key.code {
+            KeyCode::Char('/') => return self.open_search(),
             KeyCode::Char('q') => return self.request_quit(),
             KeyCode::Char('?') => return self.open_help(),
             KeyCode::Char('s') => return self.save(false),
@@ -963,6 +975,7 @@ impl App {
             KeyCode::Char('n') if self.tab_kind() == Tab::Backgrounds => {
                 self.run_act(Act::AddBackground)
             }
+            KeyCode::Char('m') => self.open_menu_for_selection(),
             KeyCode::Char('d') | KeyCode::Delete if self.tab_kind() == Tab::Backgrounds => {
                 if let Some(Row::Action(_, Act::Background(i))) = rows.get(sel) {
                     self.remove_background(*i);
@@ -991,6 +1004,7 @@ impl App {
             KeyCode::Up | KeyCode::Char('k') => self.form_state_home().step(&rows, false),
             KeyCode::Down | KeyCode::Char('j') => self.form_state_home().step(&rows, true),
             KeyCode::Char('n') => self.run_act(Act::NewTheme),
+            KeyCode::Char('m') => self.open_menu_for_selection(),
             KeyCode::Char('d') | KeyCode::Delete => {
                 if let Some(Row::Action(_, Act::Open(slug))) = rows.get(sel) {
                     self.popup = Some(Popup::Confirm {
@@ -1029,6 +1043,8 @@ impl App {
                             s("←→  h l", "help.change"),
                             s("Enter", "help.edit"),
                             s("r", "help.reset"),
+                            s("/ · Ctrl+F", "help.search"),
+                            s("m", "help.menu"),
                             s("z", "help.undo"),
                         ],
                     ),
@@ -1107,7 +1123,7 @@ impl App {
                     }));
                 }
             }
-            Act::Background(_) => self.toast(t("msg.bg_hint"), NoteKind::Info),
+            Act::Background(_) => self.open_menu_for_selection(),
             Act::Save => self.save(false),
             Act::SaveActivate => self.save(true),
             Act::Try => self.start_try(),
@@ -1204,6 +1220,226 @@ impl App {
             d.spec.active_border.from = d.spec.colors["accent"].clone();
         }
         self.toast(t("msg.generated"), NoteKind::Info);
+    }
+
+    /// Opciones de todas las pestañas del borrador (la clave es la posición
+    /// de la fila dentro de su pestaña).
+    pub fn search_entries(&mut self) -> Vec<lizarbe_core::search::Entry> {
+        use lizarbe_core::search::Entry;
+        let saved = self.tab;
+        let mut out = vec![];
+        for (ti, tab) in Tab::ALL.iter().enumerate() {
+            self.tab = ti;
+            let title = t(tab.key());
+            out.push(Entry {
+                section: ti,
+                section_title: title.clone(),
+                group: String::new(),
+                key: String::new(),
+                label: title.clone(),
+                desc: String::new(),
+            });
+            let mut group = String::new();
+            for (i, r) in self.edit_rows().into_iter().enumerate() {
+                let (label, desc) = match r {
+                    Row::Header(h) => {
+                        group = h;
+                        continue;
+                    }
+                    Row::Field(f) => (f.def.label.clone(), f.def.desc.clone()),
+                    Row::Action(label, _) => (label, String::new()),
+                    _ => continue,
+                };
+                out.push(Entry {
+                    section: ti,
+                    section_title: title.clone(),
+                    group: group.clone(),
+                    key: i.to_string(),
+                    label,
+                    desc,
+                });
+            }
+        }
+        self.tab = saved;
+        out
+    }
+
+    pub fn open_search(&mut self) {
+        if self.screen != Screen::Edit {
+            return;
+        }
+        let items = lizarbe_core::search::pick_items(&self.search_entries());
+        self.popup = Some(Popup::Picker(Picker {
+            title: t("search.title"),
+            items,
+            sel: 0,
+            filter: String::new(),
+            target: PickTarget::App(TPick::Search),
+            current: None,
+            anchor: None,
+        }));
+    }
+
+    fn jump_to(&mut self, tab: usize, key: &str) {
+        if tab >= Tab::ALL.len() {
+            return;
+        }
+        self.tab = tab;
+        self.focus = Focus::Editor;
+        if let Ok(i) = key.parse::<usize>() {
+            self.form_state().sel = i;
+        }
+    }
+
+    fn list_state(&mut self) -> &mut FormState {
+        if self.screen == Screen::Home {
+            self.form_state_home()
+        } else {
+            self.form_state()
+        }
+    }
+
+    /// Menú de clic derecho (o tecla `m`) sobre una fila.
+    fn open_menu(&mut self, hit: Option<Hit>, at: (u16, u16)) {
+        let Some(Hit::Row(i) | Hit::Ctrl(i, _)) = hit else {
+            return;
+        };
+        let rows = self.rows();
+        let item =
+            |icon: &'static str, label: String, act: MenuAct, enabled: bool, sep: bool| MenuItem {
+                icon,
+                label,
+                act,
+                enabled,
+                separator: sep,
+            };
+        let mut items: Vec<MenuItem> = vec![];
+        match rows.get(i) {
+            Some(Row::Action(_, Act::Background(bi))) if self.screen == Screen::Edit => {
+                let bi = *bi;
+                let (n, inherited) = self
+                    .draft
+                    .as_ref()
+                    .map(|d| {
+                        (
+                            d.spec.backgrounds.len(),
+                            d.spec.backgrounds.iter().any(|p| d.is_inherited(p)),
+                        )
+                    })
+                    .unwrap_or((0, false));
+                items.push(item(
+                    "󰆴",
+                    t("menu.bg.remove"),
+                    MenuAct::RemoveBackground(bi),
+                    true,
+                    false,
+                ));
+                items.push(item(
+                    "󰁝",
+                    t("menu.bg.up"),
+                    MenuAct::MoveBackground(bi, false),
+                    bi > 0,
+                    false,
+                ));
+                items.push(item(
+                    "󰁅",
+                    t("menu.bg.down"),
+                    MenuAct::MoveBackground(bi, true),
+                    bi + 1 < n,
+                    false,
+                ));
+                items.push(item(
+                    "󰋩",
+                    t("menu.bg.inherited"),
+                    MenuAct::RemoveInherited,
+                    inherited,
+                    true,
+                ));
+                items.push(item(
+                    "󰐕",
+                    t("menu.bg.add"),
+                    MenuAct::AddBackground,
+                    true,
+                    false,
+                ));
+            }
+            Some(Row::Action(_, Act::AddBackground)) if self.screen == Screen::Edit => {
+                items.push(item(
+                    "󰐕",
+                    t("menu.bg.add"),
+                    MenuAct::AddBackground,
+                    true,
+                    false,
+                ));
+            }
+            Some(Row::Action(_, Act::Open(_))) if self.screen == Screen::Home => {
+                items.push(item(
+                    "󰏫",
+                    t("menu.open"),
+                    MenuAct::OpenTheme(i),
+                    true,
+                    false,
+                ));
+                items.push(item(
+                    "󰆴",
+                    t("menu.delete"),
+                    MenuAct::DeleteTheme(i),
+                    true,
+                    true,
+                ));
+            }
+            _ => {}
+        }
+        if items.is_empty() {
+            return;
+        }
+        self.list_state().sel = i;
+        self.focus = Focus::Editor;
+        self.popup = Some(Popup::Menu(cp::Menu { items, sel: 0, at }));
+    }
+
+    fn open_menu_for_selection(&mut self) {
+        let sel = self.list_state().sel;
+        let at = self
+            .hit_rect(Hit::Row(sel))
+            .map(|r| (r.x + 2, r.y + 1))
+            .unwrap_or((10, 5));
+        self.open_menu(Some(Hit::Row(sel)), at);
+    }
+
+    fn run_menu(&mut self, act: MenuAct) {
+        match act {
+            MenuAct::AddBackground => self.run_act(Act::AddBackground),
+            MenuAct::RemoveBackground(i) => self.remove_background(i),
+            MenuAct::MoveBackground(i, down) => self.move_background(i, down),
+            MenuAct::RemoveInherited => {
+                if let Some(d) = self.draft.as_mut() {
+                    d.push_undo();
+                    let keep: Vec<_> = d
+                        .spec
+                        .backgrounds
+                        .iter()
+                        .filter(|p| !d.is_inherited(p))
+                        .cloned()
+                        .collect();
+                    d.spec.backgrounds = keep;
+                }
+            }
+            MenuAct::OpenTheme(i) | MenuAct::DeleteTheme(i) => {
+                let Some(Row::Action(_, Act::Open(slug))) = self.rows().get(i).cloned() else {
+                    return;
+                };
+                if matches!(act, MenuAct::OpenTheme(_)) {
+                    self.open_theme(&slug);
+                } else {
+                    self.popup = Some(Popup::Confirm {
+                        title: t("del.title"),
+                        lines: vec![tf("del.body", &[("name", &slug)])],
+                        action: Confirm::DeleteTheme(slug),
+                    });
+                }
+            }
+        }
     }
 
     fn remove_background(&mut self, i: usize) {
@@ -1413,23 +1649,8 @@ impl App {
         }
     }
 
-    /// Recarga la paleta de la interfaz si el tema activo de Omarchy cambió.
-    fn refresh_palette(&mut self) {
-        if self.last_check.elapsed() < Duration::from_millis(700) {
-            return;
-        }
-        self.last_check = Instant::now();
-        let m = std::fs::metadata(&self.colors_path)
-            .and_then(|m| m.modified())
-            .ok();
-        if m != self.colors_mtime {
-            self.colors_mtime = m;
-            self.pal = Palette::load(&self.colors_path);
-        }
-    }
-
     pub fn tick(&mut self) {
-        self.refresh_palette();
+        self.palette_watch.poll(&mut self.pal);
         if !self.images.poll().is_empty() {
             self.apply_pending_palette();
         }
@@ -1507,6 +1728,11 @@ impl App {
                             d.set_field(&bind, value, def.default.as_ref());
                         }
                     }
+                    PickTarget::App(TPick::Search) => {
+                        if let Some((tab, key)) = lizarbe_core::search::decode(&value) {
+                            self.jump_to(tab, &key);
+                        }
+                    }
                     PickTarget::App(TPick::Base) => {
                         if let Some(slug) = value.as_str() {
                             self.start_new(slug);
@@ -1581,7 +1807,10 @@ impl App {
             Outcome::Checked(..) | Outcome::ConflictOverwrite | Outcome::ConflictReload => {
                 self.popup = None;
             }
-            Outcome::MenuPick(_) => self.popup = None,
+            Outcome::MenuPick(act) => {
+                self.popup = None;
+                self.run_menu(act);
+            }
         }
     }
 
@@ -1629,6 +1858,11 @@ impl App {
                     self.slide(i, m.column);
                 }
             }
+            MouseEventKind::Down(MouseButton::Right)
+                if self.popup.is_none() || matches!(self.popup, Some(Popup::Menu(_))) =>
+            {
+                self.open_menu(hit, (m.column, m.row));
+            }
             _ => {}
         }
     }
@@ -1652,6 +1886,7 @@ impl App {
         match hit {
             Some(Hit::Close) => self.request_quit(),
             Some(Hit::Back) => self.on_key(key(KeyCode::Esc)),
+            Some(Hit::Search) => self.open_search(),
             Some(Hit::Keep) => self.keep_trial(),
             Some(Hit::Revert) => self.revert_trial(),
             Some(Hit::Tab(i)) => {

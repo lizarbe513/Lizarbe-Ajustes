@@ -98,6 +98,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let close = t("btn.close");
     let back_label = t("btn.back");
     // Esc retrocede mientras el foco no esté ya en el menú de la izquierda.
+    let search = app.popup.is_none().then(|| ("/", t("btn.search")));
     let back = (app.focus != Focus::Sidebar && app.popup.is_none())
         .then_some(("Esc", back_label.as_str()));
     view::draw_header(
@@ -110,6 +111,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
         pending.as_deref(),
         ("Q", &close),
         back,
+        search.as_ref().map(|(k, l)| (*k, l.as_str())),
     );
 }
 
@@ -247,6 +249,9 @@ fn footer_hints(app: &App) -> Vec<Hint> {
     if app.focus == Focus::Content {
         v.push(k("Esc", "ft.back", 3));
     }
+    if !(app.focus == Focus::Content && app.section == Section::Plugins) {
+        v.push(k("/", "ft.search", 2));
+    }
     v.push(k("o", "ft.menu", 1));
     v.push(k("Tab", "ft.next_area", 0));
     v.push(k("?", "ft.help", 3));
@@ -321,5 +326,34 @@ mod tests {
         for needle in ["[A] Aplicar", "[C] Cancelar", "[R] Restaurar"] {
             assert!(text.contains(needle), "falta {needle}");
         }
+    }
+
+    #[test]
+    fn search_button_is_in_the_header_and_jumps_to_an_option() {
+        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let (_d, mut app) = app();
+        let text = render(&mut app, 120, 36).join("\n");
+        assert!(text.contains("[/] Buscar"), "{text}");
+        app.section = Section::Idle;
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert!(matches!(app.popup, Some(Popup::Picker(_))));
+        let first = app
+            .search_entries()
+            .into_iter()
+            .find(|e| e.section == Section::Appearance.index() && !e.key.is_empty())
+            .unwrap();
+        for c in first.label.chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.popup.is_none());
+        assert_eq!(app.section, Section::Appearance);
+        // en Plugins, `/` sigue filtrando plugins
+        app.go_section(Section::Plugins);
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert!(app.popup.is_none());
+        app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
+        assert!(matches!(app.popup, Some(Popup::Picker(_))));
     }
 }

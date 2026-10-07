@@ -38,6 +38,7 @@ pub trait CoreHit: Copy + PartialEq {
     fn sidebar(i: usize) -> Self;
     fn close() -> Self;
     fn back() -> Self;
+    fn search() -> Self;
     fn mode_toggle() -> Self;
     fn lang_toggle() -> Self;
     fn popup_item(i: usize) -> Self;
@@ -89,12 +90,14 @@ pub fn draw_header<H: CoreHit>(
     pending: Option<&str>,
     close: (&str, &str),
     back: Option<(&str, &str)>,
+    search: Option<(&str, &str)>,
 ) {
     let pal = ctx.pal;
     let w = area.width as usize;
     let close_w = button_width(close.0, close.1);
     let back_w = back.map_or(0, |b| button_width(b.0, b.1) + 3);
-    let mut right_w = close_w + 2 + back_w;
+    let search_w = search.map_or(0, |b| button_width(b.0, b.1) + 3);
+    let mut right_w = close_w + 2 + back_w + search_w;
     let parts_text = parts.join("  ·  ");
     let pend_w = pending.map_or(0, |p| p.width() + 5);
     let mut show_parts = true;
@@ -134,6 +137,19 @@ pub fn draw_header<H: CoreHit>(
 
     let mut x = area.right().saturating_sub(right_w as u16);
     if right_w > 0 {
+        if let Some((key, label)) = search {
+            let hit = H::search();
+            let lit = ctx.hovered(hit);
+            let bw = button_width(key, label) as u16;
+            put(
+                f,
+                x,
+                area.y,
+                button_spans(pal, key, label, true, false, lit),
+            );
+            ctx.hit(Rect::new(x, area.y, bw, 1), hit);
+            x += bw + 3;
+        }
         if let Some((key, label)) = back {
             let hit = H::back();
             let lit = ctx.hovered(hit);

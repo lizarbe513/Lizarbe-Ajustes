@@ -5,6 +5,7 @@ mod app;
 mod apps;
 mod autostart;
 mod binds;
+mod capture;
 mod catalog;
 mod hyprfile;
 mod i18n;

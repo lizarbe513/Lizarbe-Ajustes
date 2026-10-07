@@ -25,11 +25,12 @@ pub enum Section {
     NightLight,
     Compose,
     Language,
+    Screenshots,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 12] = [
+    pub const ALL: [Section; 13] = [
         Section::Appearance,
         Section::Windows,
         Section::Monitors,
@@ -41,6 +42,7 @@ impl Section {
         Section::NightLight,
         Section::Compose,
         Section::Language,
+        Section::Screenshots,
         Section::Changes,
     ];
 
@@ -62,6 +64,7 @@ impl Section {
             "luz" | "nightlight" | "night" => Section::NightLight,
             "texto" | "compose" | "xcompose" => Section::Compose,
             "idioma" | "language" | "lang" => Section::Language,
+            "capturas" | "captura" | "screenshots" | "screenshot" => Section::Screenshots,
             "cambios" | "changes" => Section::Changes,
             _ => return None,
         })
@@ -80,6 +83,7 @@ impl Section {
             Section::NightLight => "nightlight",
             Section::Compose => "compose",
             Section::Language => "language",
+            Section::Screenshots => "screenshots",
             Section::Changes => "changes",
         }
     }
@@ -97,6 +101,7 @@ impl Section {
             Section::NightLight => "󰖔",
             Section::Compose => "󰞅",
             Section::Language => "󰗊",
+            Section::Screenshots => "󰹑",
             Section::Changes => "󰄬",
         }
     }
@@ -131,6 +136,7 @@ pub const CATEGORIES: [(&str, &[Section]); 4] = [
             Section::NightLight,
             Section::Compose,
             Section::Language,
+            Section::Screenshots,
         ],
     ),
     ("cat.review", &[Section::Changes]),
@@ -213,8 +219,60 @@ pub fn groups(section: Section, ctx: &Ctx) -> Vec<Group> {
         // Listas propias: las construye la aplicación.
         Section::NightLight => nightlight(),
         Section::Language => language(),
+        Section::Screenshots => screenshots(),
         Section::Keybinds | Section::Autostart | Section::Compose | Section::Changes => vec![],
     }
+}
+
+fn screenshots() -> Vec<Group> {
+    use crate::capture as cap;
+    let dir = cap::default_dir();
+    let rec = cap::default_recdir();
+    vec![
+        Group::new(
+            "cap_save",
+            vec![
+                text_presets(
+                    cap::KEY_DIR,
+                    &[
+                        "~/Pictures",
+                        "~/Pictures/Screenshots",
+                        "~/Downloads",
+                        "~/Desktop",
+                    ],
+                    &dir,
+                ),
+                choice(
+                    cap::KEY_PROC,
+                    &cap::PROCS.map(|p| json!(p)),
+                    json!(cap::DEFAULT_PROC),
+                ),
+            ],
+        ),
+        Group::new(
+            "cap_how",
+            vec![
+                choice(
+                    cap::KEY_MODE,
+                    &cap::MODES.map(|m| json!(m)),
+                    json!(cap::DEFAULT_MODE),
+                ),
+                text_presets(
+                    cap::KEY_EDITOR,
+                    &["tensaku-edit", "satty", "swappy", "xdg-open"],
+                    cap::DEFAULT_EDITOR,
+                ),
+            ],
+        ),
+        Group::new(
+            "cap_rec",
+            vec![text_presets(
+                cap::KEY_RECDIR,
+                &["~/Videos", "~/Videos/Recordings", "~/Downloads"],
+                &rec,
+            )],
+        ),
+    ]
 }
 
 fn appearance() -> Vec<Group> {

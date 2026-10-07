@@ -62,6 +62,18 @@ impl Paths {
         self.hypr_dir.join("bindings.lua")
     }
 
+    /// Variables de entorno de la sesión (uwsm); en pruebas, dentro de la
+    /// carpeta de pruebas.
+    pub fn uwsm_env(&self) -> PathBuf {
+        if self.sandbox {
+            self.hypr_dir.join("uwsm-env")
+        } else {
+            dirs::home_dir()
+                .unwrap_or_default()
+                .join(".config/uwsm/env")
+        }
+    }
+
     pub fn autostart_lua(&self) -> PathBuf {
         self.hypr_dir.join("autostart.lua")
     }

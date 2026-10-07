@@ -29,7 +29,11 @@ pub enum WInput {
 /// Selectores propios de Widgets.
 #[derive(Debug, Clone, PartialEq)]
 pub enum WPick {
-    AddWidget { at: (usize, usize) },
+    AddWidget {
+        at: (usize, usize),
+    },
+    /// Búsqueda de opciones: salta a la elegida.
+    Search,
 }
 
 /// Acción de una entrada del menú contextual.

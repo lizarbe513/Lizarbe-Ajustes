@@ -113,6 +113,11 @@ impl Draft {
         }
     }
 
+    /// ¿El fondo viene de la carpeta del tema base (no es propio)?
+    pub fn is_inherited(&self, p: &std::path::Path) -> bool {
+        self.base.as_ref().is_some_and(|b| p.starts_with(b))
+    }
+
     pub fn dirty(&self) -> bool {
         self.spec != self.orig || self.name != self.orig_name
     }

@@ -90,6 +90,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let close = ("Q", t("btn.close"));
     let back_label = t("btn.back");
     // Esc retrocede mientras el foco no esté ya en el menú de la izquierda.
+    let search = app.popup.is_none().then(|| ("/", t("btn.search")));
     let back = (app.focus != Focus::Sidebar && app.popup.is_none())
         .then_some(("Esc", back_label.as_str()));
     view::draw_header(
@@ -102,6 +103,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
         pending_text.as_deref(),
         (close.0, &close.1),
         back,
+        search.as_ref().map(|(k, l)| (*k, l.as_str())),
     );
 }
 
@@ -301,6 +303,7 @@ fn footer_hints(app: &App) -> Vec<Hint> {
             k("Esc", "ft.back", 3),
         ],
     };
+    v.push(k("/", "ft.search", 2));
     v.push(k("o", "ft.menu", 1));
     v.push(k("Tab", "ft.next_area", 0));
     v.push(k("?", "ft.help", 3));

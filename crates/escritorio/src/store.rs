@@ -21,8 +21,10 @@ use serde_json::{Value, json};
 
 use crate::autostart;
 use crate::binds;
+use crate::capture;
 use crate::catalog::{self, Ctx, mode_value, monitor_key};
 use crate::hyprfile::{self, CustomBind, RenderCtx, Values};
+use crate::i18n::t;
 use crate::migrate;
 use crate::paths::Paths;
 use crate::sunset::{self, Night};
@@ -579,6 +581,18 @@ impl Store {
                 autostart::render(self.autostart_raw.as_deref().unwrap_or(""), &self.autostart);
             tx.write(&self.paths.autostart_lua(), &text)?;
         }
+        // Capturas: carpeta y editor también para el resto de la sesión.
+        let env_vars = capture::env_vars(&self.values);
+        let env_before = capture::env_vars(&self.orig);
+        if env_vars != env_before {
+            let file = self.paths.uwsm_env();
+            let current = read(&file).unwrap_or_default();
+            let new = capture::render_env(&current, &env_vars);
+            if new != current {
+                tx.write(&file, &new)?;
+            }
+            report.warnings.push(t("cap.relogin"));
+        }
         let compose_changed = self.xcompose != self.xcompose_orig;
         if compose_changed {
             let text = xcompose::render(self.xcompose_raw.as_deref().unwrap_or(""), &self.xcompose);
@@ -852,6 +866,33 @@ mod tests {
         s.apply().unwrap();
         let text = std::fs::read_to_string(d.path().join("escritorio.lua")).unwrap();
         assert!(!text.contains("hl.config"));
+    }
+
+    #[test]
+    fn screenshot_settings_write_the_session_env_and_warn() {
+        let (d, mut s) = sandbox();
+        s.set_field(
+            &Bind("x:cap_dir".into()),
+            json!("/tmp/mis capturas"),
+            Some(&json!("/home/x/Pictures")),
+        );
+        let report = s.apply().unwrap();
+        let env = std::fs::read_to_string(d.path().join("uwsm-env")).unwrap();
+        assert!(
+            env.contains("export OMARCHY_SCREENSHOT_DIR=\"/tmp/mis capturas\""),
+            "{env}"
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|w| w.contains("iniciar sesión") || w.contains("log in"))
+        );
+        // volver al valor por defecto limpia el bloque
+        s.unset(&Bind("x:cap_dir".into()));
+        s.apply().unwrap();
+        let env = std::fs::read_to_string(d.path().join("uwsm-env")).unwrap();
+        assert!(!env.contains("OMARCHY_SCREENSHOT_DIR"), "{env}");
     }
 
     #[test]

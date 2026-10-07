@@ -12,8 +12,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use lizarbe_core::hypr::Monitor;
-use serde_json::Value;
+use serde_json::{Value, json};
 
+use crate::capture;
 use crate::catalog::{is_own, mode_value, monitor_key};
 
 pub type Values = BTreeMap<String, Value>;
@@ -75,6 +76,18 @@ pub fn custom_binds(values: &Values) -> Vec<CustomBind> {
 fn bind_lines(values: &Values, ctx: &RenderCtx) -> Vec<String> {
     let mut unbinds = vec![];
     let mut binds = vec![];
+    // Capturas: si cambió el modo, el procesado o el editor, el atajo de
+    // captura lleva su propio comando (aunque no se haya movido de tecla).
+    let capture = capture::command(values).map(|c| lua_value(&Value::String(c)));
+    let print_key = capture::DEFAULT_KEYS;
+    let print_moved = values.contains_key(&format!("x:bind:{print_key}"));
+    if let (Some(action), false) = (&capture, print_moved) {
+        unbinds.push(format!("hl.unbind({})", lua_value(&json!(print_key))));
+        binds.push(format!(
+            "o.bind({}, \"Screenshot\", {action})",
+            lua_value(&json!(print_key)),
+        ));
+    }
     for (key, v) in values {
         let Some(orig) = key.strip_prefix("x:bind:") else {
             continue;
@@ -83,11 +96,21 @@ fn bind_lines(values: &Values, ctx: &RenderCtx) -> Vec<String> {
             "hl.unbind({})",
             lua_value(&Value::String(orig.into()))
         ));
-        if let (Some(new), Some((desc, action))) = (v.as_str(), ctx.bind_actions.get(orig)) {
+        let known = ctx.bind_actions.get(orig).cloned();
+        let (desc, action) = match (orig == print_key, &capture, known) {
+            (true, Some(a), k) => (
+                k.map(|(d, _)| d).unwrap_or_else(|| "Screenshot".into()),
+                a.clone(),
+            ),
+            (true, None, None) => ("Screenshot".into(), "\"omarchy-capture-screenshot\"".into()),
+            (_, _, Some(k)) => k,
+            _ => continue,
+        };
+        if let Some(new) = v.as_str() {
             binds.push(format!(
                 "o.bind({}, {}, {action})",
                 lua_value(&Value::String(new.into())),
-                lua_value(&Value::String(desc.clone())),
+                lua_value(&Value::String(desc)),
             ));
         }
     }
@@ -175,6 +198,13 @@ pub fn render(values: &Values, ctx: &RenderCtx) -> String {
             for var in ["XCURSOR_SIZE", "HYPRCURSOR_SIZE"] {
                 let _ = writeln!(out, "hl.env(\"{var}\", \"{sz}\")");
             }
+        }
+    }
+    let cap_env = capture::env_vars(values);
+    if !cap_env.is_empty() {
+        out.push_str("\n-- Capturas de pantalla\n");
+        for (k, v) in cap_env {
+            let _ = writeln!(out, "hl.env({k:?}, {v:?})");
         }
     }
     let binds = bind_lines(values, ctx);
@@ -451,6 +481,65 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.to_string(), v.clone()))
             .collect()
+    }
+
+    #[test]
+    fn screenshot_command_goes_into_the_capture_bind() {
+        let ctx = RenderCtx::default();
+        // sin cambios, nada
+        assert!(!render(&Values::new(), &ctx).contains("omarchy-capture-screenshot"));
+        // solo el modo: se suelta PRINT y se vuelve a poner con el comando
+        let t = render(&vals(&[("x:cap_mode", json!("region"))]), &ctx);
+        assert!(t.contains("hl.unbind(\"PRINT\")"), "{t}");
+        assert!(
+            t.contains(
+                "o.bind(\"PRINT\", \"Screenshot\", \"omarchy-capture-screenshot region slurp\")"
+            ),
+            "{t}"
+        );
+        // tecla movida + solo copiar: una sola suelta y la tecla nueva
+        let t = render(
+            &vals(&[
+                ("x:bind:PRINT", json!("SUPER + S")),
+                ("x:cap_proc", json!("copy")),
+            ]),
+            &ctx,
+        );
+        assert_eq!(t.matches("hl.unbind(\"PRINT\")").count(), 1, "{t}");
+        assert!(
+            t.contains(
+                "o.bind(\"SUPER + S\", \"Screenshot\", \"omarchy-capture-screenshot smart copy\")"
+            ),
+            "{t}"
+        );
+        // tecla desactivada: no se vuelve a poner
+        let t = render(
+            &vals(&[("x:bind:PRINT", Value::Null), ("x:cap_proc", json!("copy"))]),
+            &ctx,
+        );
+        assert!(!t.contains("o.bind"), "{t}");
+    }
+
+    #[test]
+    fn screenshot_folder_is_exported_to_hyprland() {
+        let t = render(
+            &vals(&[("x:cap_dir", json!("/tmp/capturas"))]),
+            &RenderCtx::default(),
+        );
+        assert!(
+            t.contains("hl.env(\"OMARCHY_SCREENSHOT_DIR\", \"/tmp/capturas\")"),
+            "{t}"
+        );
+    }
+
+    #[test]
+    fn the_stored_screenshot_values_are_not_hyprland_options() {
+        let t = render(
+            &vals(&[("x:cap_dir", json!("/x")), ("x:cap_mode", json!("region"))]),
+            &RenderCtx::default(),
+        );
+        assert!(!t.contains("hl.config"), "{t}");
+        assert!(t.contains("LIZARBE_ESCRITORIO"));
     }
 
     #[test]

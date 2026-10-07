@@ -85,6 +85,8 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
     let pending = (app.dirty()).then(|| t("status.unsaved"));
     let close = t("btn.close");
     let back_label = t("btn.back");
+    let search =
+        (app.screen == Screen::Edit && app.popup.is_none()).then(|| ("/", t("btn.search")));
     let back =
         (app.screen == Screen::Edit && app.popup.is_none()).then_some(("Esc", back_label.as_str()));
     view::draw_header(
@@ -97,6 +99,7 @@ fn draw_header(f: &mut Frame, app: &mut App, area: Rect) {
         pending.as_deref(),
         ("Q", &close),
         back,
+        search.as_ref().map(|(k, l)| (*k, l.as_str())),
     );
 }
 
@@ -580,6 +583,7 @@ fn footer_hints(app: &App) -> Vec<Hint> {
             k("Enter", "ft.open", 3),
             k("n", "ft.new", 3),
             k("d", "ft.delete", 2),
+            k("m", "ft.menu", 1),
             k("q", "ft.quit", 1),
         ];
     }
@@ -598,9 +602,11 @@ fn footer_hints(app: &App) -> Vec<Hint> {
             k("←→", "ft.change", 2),
             k("Enter", "ft.edit", 3),
             k("r", "ft.reset", 1),
+            k("m", "ft.menu", 1),
             k("Esc", "ft.back", 3),
         ],
     };
+    v.push(k("/", "ft.search", 2));
     v.push(k("1-8", "ft.tabs", 1));
     v.push(k("z", "ft.undo", 1));
     v.push(k("?", "ft.help", 3));
@@ -882,6 +888,90 @@ mod tests {
         let acc = lizarbe_core::color::parse_hex(&d.spec.colors["accent"]).unwrap();
         let (h, s, _) = lizarbe_core::color::to_hsl(acc);
         assert!(s > 0.3 && (170.0..200.0).contains(&h), "{h} {s}");
+    }
+
+    #[test]
+    fn right_click_menu_removes_the_wallpapers_of_the_base_theme() {
+        use crate::app::Act;
+        use lizarbe_core::popup::Popup as P;
+        use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        let (t, mut app) = app();
+        open_editor(&mut app);
+        let inherited = t.path().join("system/tokyo-night/backgrounds/a.png");
+        std::fs::write(&inherited, b"x").unwrap();
+        let own = t.path().join("propio.png");
+        std::fs::write(&own, b"x").unwrap();
+        app.draft.as_mut().unwrap().spec.backgrounds = vec![inherited.clone(), own.clone()];
+        app.tab = 4;
+        let text = render(&mut app, 150, 40).join("\n");
+        assert!(text.contains("(del tema base)"), "{text}");
+
+        let idx = app
+            .rows()
+            .iter()
+            .position(|r| matches!(r, Row::Action(_, Act::Background(0))))
+            .unwrap();
+        let (rect, _) = *app
+            .hits
+            .iter()
+            .rev()
+            .find(|(_, h)| *h == Hit::Row(idx))
+            .unwrap();
+        let click = |app: &mut App, x: u16, y: u16| {
+            app.on_mouse(MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Right),
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+        click(&mut app, rect.x + 2, rect.y);
+        let Some(P::Menu(m)) = &app.popup else {
+            panic!("el clic derecho debe abrir el menú")
+        };
+        assert_eq!(m.items.len(), 5);
+        let text = render(&mut app, 150, 40).join("\n");
+        assert!(text.contains("Quitar los fondos del tema base"), "{text}");
+
+        // «subir» está desactivado en el primero: se salta
+        for _ in 0..2 {
+            app.on_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.popup.is_none());
+        assert_eq!(app.draft.as_ref().unwrap().spec.backgrounds, vec![own]);
+        // y se puede deshacer
+        app.on_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        assert_eq!(app.draft.as_ref().unwrap().spec.backgrounds.len(), 2);
+    }
+
+    #[test]
+    fn search_finds_an_option_in_another_tab() {
+        use crate::app::Act;
+        let (_t, mut app) = app();
+        // en el inicio no hay nada que buscar
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert!(app.popup.is_none());
+        open_editor(&mut app);
+        let text = render(&mut app, 120, 36).join("\n");
+        assert!(text.contains("[/] Buscar"), "{text}");
+        app.on_key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE));
+        assert!(matches!(
+            app.popup,
+            Some(lizarbe_core::popup::Popup::Picker(_))
+        ));
+        for c in "añadir fondo".chars() {
+            app.on_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+        }
+        app.on_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(app.popup.is_none());
+        assert_eq!(app.tab_kind(), Tab::Backgrounds);
+        let rows = app.rows();
+        let sel = app.forms[app.tab].sel;
+        assert!(matches!(
+            rows.get(sel),
+            Some(Row::Action(_, Act::AddBackground))
+        ));
     }
 
     /// `cargo test dump_screens -- --ignored --nocapture` imprime las pantallas.
