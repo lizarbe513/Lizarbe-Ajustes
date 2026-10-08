@@ -12,5 +12,6 @@ uninstall_app lizarbe-escritorio
 uninstall_app lizarbe-widgets
 uninstall_app lizarbe-temas
 uninstall_app lizarbe-tienda
+uninstall_app lizarbe-bienvenida
 echo "Lizarbe Ajustes (copias de desarrollo) desinstalado. Tu configuración no se ha modificado."
 echo "El menú y las reglas de ventana pertenecen al paquete lizarbe-menu."

@@ -1,7 +1,7 @@
-# Lizarbe Ajustes — Escritorio, Widgets y Estudio de temas
+# Lizarbe Ajustes — Escritorio, Widgets, Estudio de temas, Tienda y Bienvenida
 
 > Configuración de [Omarchy](https://omarchy.org) por interfaz TUI, sin editar archivos de texto.
-> Este repositorio es un *workspace* de Rust con cuatro aplicaciones y un núcleo compartido. Los
+> Este repositorio es un *workspace* de Rust con cinco aplicaciones y un núcleo compartido. Los
 > usuarios lo reciben con el paquete `lizarbe-ajustes` del repositorio de Lizarbe y se actualiza
 > con `omarchy update`.
 
@@ -11,6 +11,7 @@
 | **Widgets** | `lizarbe-widgets` | Apariencia › Widgets y barra · Configuración › Plugins, Notificaciones |
 | **Estudio de temas** | `lizarbe-temas` | Apariencia › Crear tema |
 | **Tienda** | `lizarbe-tienda` | Instalar › Paquete y Instalar › AUR (misma pantalla; cambia solo la fuente) |
+| **Bienvenida** | `lizarbe-bienvenida` | Aprender › Bienvenida (y sola, una vez, en el primer inicio de un usuario nuevo) |
 
 *[English below](#english)*
 
@@ -69,6 +70,35 @@ Si mueves widgets en la propia barra con la app abierta, se detecta y se recarga
 
 ```bash
 lizarbe-widgets --section plugins       # bar, widgets, plugins, idle, appearance, changes
+```
+
+## Bienvenida
+
+Guía de primer inicio para quien llega de Windows: la terminal como interfaz, pero sin miedo. Con la
+identidad visual de Lizarbe (colores fijos de marca, el isotipo y el logotipo que emergen de tramas
+`░▒▓█`, ✦ como marca) recorre ocho capítulos y termina con un «certificado» de logros:
+
+1. **La tecla Super** y el «Super + algo = una orden».
+2. **Práctica en vivo**: «Pulse Super + Espacio»… y Hyprland (`.socket2.sock`) cuenta que el usuario
+   lo hizo de verdad (menú abierto, terminal nueva, ventana cerrada, cambio de escritorio, pantalla
+   completa). Un «radar» enseña lo que se detecta.
+3. **La terminal no muerde**: una terminal de prueba donde solo se aceptan órdenes inofensivas
+   (`fastfetch`, `lizarbe status`, `date`…), con sugerencia y `Tab`.
+4. **Conectar el teléfono**: QR de la descarga de KDE Connect (probado: se decodifica con `zbarimg`),
+   pasos, comprobación del cortafuegos y teléfonos detectados en vivo (`kdeconnect-cli`).
+5. **Su escritorio, a su gusto**: cambiar el tema del sistema entero, con vuelta al de partida.
+6. **Configurar sin editar archivos**: abre Escritorio, Widgets, Notificaciones, Capturas, Crear tema,
+   la Tienda y el Centro.
+7. **Conceptos clave** con un dibujo animado cada uno, y 8. **Atajos imprescindibles**.
+
+Aparece sola una vez: el hook `60-lizarbe-bienvenida.sh` de `lizarbe-menu` la abre si existe
+`~/.config/lizarbe/bienvenida-pendiente` (la siembran `/etc/skel` y la ISO) y la propia app quita la
+marca al salir, salvo que se pida volver a verla. Siempre está en Aprender › Bienvenida.
+
+```bash
+lizarbe-bienvenida                  # el recorrido completo
+lizarbe-bienvenida --capitulo 4     # empezar en un capítulo (0 = arranque, 9 = final)
+lizarbe-bienvenida --demo           # sin tocar el sistema (se activa solo con --config-dir)
 ```
 
 ## Tienda
@@ -191,6 +221,8 @@ Los paquetes se construyen y publican desde
 - `crates/widgets/` — `shell.json`/`shell.toml`, plugins y la vista de la barra.
 - `crates/temas/` — borrador del tema, maqueta, paletas (acento y k-means), imágenes y pruebas en vivo.
 - `crates/tienda/` — catálogo curado (`catalogo.toml`), consultas a pacman y la interfaz de la tienda.
+- `crates/bienvenida/` — capítulos, práctica en vivo (`retos`), QR, terminal de prueba, animaciones y marca.
+  El núcleo aporta `hypr_events` (eventos de Hyprland), `ansi` (colores ANSI → ratatui) y `frame_interval`.
 
 ### Estilo visual
 
@@ -213,6 +245,10 @@ Four TUI apps (three to configure [Omarchy](https://omarchy.org) without editing
 - **Theme studio** (`lizarbe-temas`): create and edit complete Omarchy themes with a live mock-up,
   palettes generated from an accent or a wallpaper, wallpapers, icons, editors and bar colors, and
   a **try on the desktop** mode that reverts after 20 s unless confirmed.
+- **Welcome** (`lizarbe-bienvenida`): a first-run tour with the Lizarbe identity. It practices the shortcuts
+  live (Hyprland reports what you really did), shows a QR to install KDE Connect and lists nearby phones,
+  offers a safe toy terminal, switches themes and opens the settings tools. It appears once on a new
+  user's first login and lives in Learn › Welcome.
 - **App Store** (`lizarbe-tienda`): browse and install apps by category with descriptions in your
   language, search by what you want to do, and mark several apps to install at once. It is the
   screen opened by Install › Package (official repos) and Install › AUR (community programs built on

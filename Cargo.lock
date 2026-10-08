@@ -1096,8 +1096,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
+name = "lizarbe-bienvenida"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "lizarbe-core",
+ "qrcode",
+ "ratatui",
+ "unicode-width",
+]
+
+[[package]]
 name = "lizarbe-core"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1113,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-escritorio"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1125,7 +1136,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-temas"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1140,7 +1151,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-tienda"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "lizarbe-core",
@@ -1152,7 +1163,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-widgets"
-version = "0.9.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1734,6 +1745,12 @@ checksum = "7f6d64c71eb498fe9eae14ce4ec935c555749aef511cca85b5568910d6e48001"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "qrcode"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d68782463e408eb1e668cf6152704bd856c78c5b6417adaee3203d8f4c1fc9ec"
 
 [[package]]
 name = "quantette"

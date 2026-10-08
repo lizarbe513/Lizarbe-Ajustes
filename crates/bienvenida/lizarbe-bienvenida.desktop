@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Bienvenida
+Name[en]=Welcome
+GenericName=Guía de primer inicio de Lizarbe
+GenericName[en]=Lizarbe first-run guide
+Comment=Un recorrido para aprender a usar su Lizarbe: atajos, teléfono, temas y más
+Comment[en]=A tour to learn your Lizarbe: shortcuts, phone, themes and more
+Exec=omarchy-launch-tui --app-id=org.omarchy.lizarbe-bienvenida lizarbe-bienvenida
+Icon=help-about
+Terminal=false
+Type=Application
+Categories=System;Documentation;
+Keywords=bienvenida;welcome;guia;guide;tutorial;primeros pasos;inicio;lizarbe;tui;

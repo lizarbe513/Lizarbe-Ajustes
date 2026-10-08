@@ -44,6 +44,11 @@ pub trait TuiApp {
     fn esc_cancels(&self) -> bool {
         false
     }
+    /// Cada cuánto se redibuja y se llama a `tick` si no llegan eventos. Las
+    /// aplicaciones con animaciones devuelven un valor corto mientras animan.
+    fn frame_interval(&self) -> Duration {
+        Duration::from_millis(250)
+    }
 }
 
 fn enter(title: &str) -> ratatui::DefaultTerminal {
@@ -64,7 +69,7 @@ pub fn run<A: TuiApp>(app: &mut A, title: &str) -> Result<()> {
     let result = (|| -> Result<()> {
         loop {
             terminal.draw(|f| app.draw(f))?;
-            if event::poll(Duration::from_millis(250))? {
+            if event::poll(app.frame_interval())? {
                 match event::read()? {
                     Event::Key(k) if k.kind != KeyEventKind::Release => app.on_key(k),
                     Event::Mouse(m) => app.on_mouse(m),
