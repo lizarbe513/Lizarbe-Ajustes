@@ -8,8 +8,8 @@ use ratatui::text::Span;
 
 use crate::app::{App, Hit};
 use crate::brand::*;
-use crate::i18n::{t, tf};
-use crate::ui::{Boton, Marco, boton, marco, parrafo, texto, titulo_capitulo};
+use crate::i18n::t;
+use crate::ui::{Boton, Marco, boton, marco, texto, titulo_capitulo};
 use lizarbe_core::ui::{put, truncate};
 
 pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
@@ -142,29 +142,15 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 &format!("{giro} {}", t("esc.aplicando")),
                 bold(CADMIUM),
             );
-        } else if let Some(a) = &app.tema_aplicado {
-            texto(
-                f,
-                px,
-                yd,
-                &format!("{SPARK} {}", tf("esc.aplicado", &[("tema", a)])),
-                bold(GREEN),
-            );
         }
-        let yn = yd + 1 + parrafo(f, px, yd + 1, pw, &t("esc.nota"), fg(SLATE)) + 1;
         let mut xb = px;
-        for (tecla_, clave, accion, principal) in [
-            ("Enter", "btn.aplicar", '\n', true),
-            ("B", "btn.otro_fondo", 'b', false),
-            ("Z", "btn.volver_tema", 'z', false),
-        ] {
+        for (tecla_, clave, accion) in [("B", "btn.otro_fondo", 'b'), ("Z", "btn.volver_tema", 'z')]
+        {
             let etiqueta = t(clave);
-            if xb + etiqueta.chars().count() as u16 + 9 > r.right() || yn >= r.bottom() {
+            if xb + etiqueta.chars().count() as u16 + 6 > r.right() || yd + 1 >= r.bottom() {
                 break;
             }
-            let mut b = Boton::new(tecla_, &etiqueta, accion);
-            b.principal = principal;
-            xb += boton(app, f, xb, yn, b) + 3;
+            xb += boton(app, f, xb, yd + 1, Boton::new(tecla_, &etiqueta, accion)) + 3;
         }
     }
 }

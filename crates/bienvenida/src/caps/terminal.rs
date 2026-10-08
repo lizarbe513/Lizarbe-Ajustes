@@ -5,21 +5,18 @@ use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 
-use crate::anim;
 use crate::app::App;
 use crate::brand::*;
 use crate::i18n::t;
-use crate::ui::{Marco, marco, parrafo, recortar, texto, titulo_capitulo};
+use crate::ui::{Marco, marco, recortar, titulo_capitulo};
 use lizarbe_core::ui::put;
 
 pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     let h0 = titulo_capitulo(app, f, r, "cap.terminal");
     let tt = app.cap_t();
     let y0 = r.y + h0 + 1;
-    // Pista bajo la ventana.
-    let alto_pista = 4;
-    let alto = r.bottom().saturating_sub(y0 + alto_pista).clamp(6, 20);
-    let ventana = Rect::new(r.x, y0, r.width.min(104), alto);
+    let alto = r.bottom().saturating_sub(y0).clamp(6, 14);
+    let ventana = Rect::new(r.x, y0, r.width.min(90), alto);
     marco(f, ventana, Marco::Fino, SLATE, "");
     // Barra de título de la «ventana».
     put(
@@ -104,20 +101,5 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         recortar(&linea, interior.width as usize),
     );
 
-    // Pista.
-    let y = ventana.bottom();
-    if app.tiene("fastfetch") {
-        texto(
-            f,
-            r.x,
-            y,
-            &format!("{SPARK} {}", t("term.logrado")),
-            bold(GREEN),
-        );
-    } else {
-        let p = anim::pulso(tt, 1.2);
-        texto(f, r.x, y, &t("term.pista"), fg(blend(SILVER, PHOSPHOR, p)));
-    }
-    parrafo(f, r.x, y + 1, r.width, &t("term.pie"), fg(SLATE));
     let _: Option<Line> = None;
 }

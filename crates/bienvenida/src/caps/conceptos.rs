@@ -17,7 +17,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     let h0 = titulo_capitulo(app, f, r, "cap.conceptos");
     let tt = app.cap_t();
     let y0 = r.y + h0 + 1;
-    let lista_w = 30u16.min(r.width / 3);
+    let lista_w = 30u16.min(r.width * 2 / 5);
 
     for (i, c) in CONCEPTOS.iter().enumerate() {
         let y = y0 + i as u16 * 2;

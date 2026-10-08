@@ -6,7 +6,7 @@ use lizarbe_core::ui::{put, spaced, truncate, wrap};
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::text::Span;
 use ratatui::widgets::{Block, Clear};
 use unicode_width::UnicodeWidthStr;
 
@@ -202,31 +202,19 @@ pub fn limpiar(f: &mut Frame, r: Rect) {
     f.render_widget(Block::new().style(Style::new().bg(BG).fg(SILVER)), r);
 }
 
-/// Título de capítulo: «✦ 02 / 08 · PRÁCTICA EN VIVO» y su subtítulo. Devuelve las filas usadas.
+/// Título del paso y, justo debajo, la frase que dice qué hacer ahora. Devuelve las filas usadas.
 pub fn titulo_capitulo(app: &App, f: &mut Frame, r: Rect, clave: &str) -> u16 {
-    let cap = app.capitulo();
-    let n = cap.numero().unwrap_or(0);
-    let titulo = spaced(&t(clave).to_uppercase());
-    put(
-        f,
-        r.x,
-        r.y,
-        vec![
-            Span::styled(format!("{SPARK} "), bold(RED)),
-            Span::styled(format!("{n:02} / {:02}", Cap::NUMERADOS), fg(SLATE)),
-            Span::styled("  ·  ", fg(SLATE)),
-            Span::styled(titulo, bold(PHOSPHOR)),
-        ],
-    );
-    let filas = parrafo(
-        f,
-        r.x + 2,
-        r.y + 1,
-        r.width.saturating_sub(2),
-        &t(&format!("{clave}.sub")),
-        fg(SILVER),
-    );
-    filas + 2
+    texto(f, r.x, r.y, &t(clave), bold(PHOSPHOR));
+    let g = app.guia();
+    let (marca, st_marca, st) = if g.hecho {
+        ("✓", bold(GREEN), bold(GREEN))
+    } else {
+        let p = anim::pulso(app.cap_t(), 1.4);
+        ("▸", bold(blend(RED, PHOSPHOR, p * 0.5)), fg(PHOSPHOR))
+    };
+    texto(f, r.x, r.y + 1, marca, st_marca);
+    let filas = parrafo(f, r.x + 2, r.y + 1, r.width.saturating_sub(2), &g.texto, st);
+    1 + filas
 }
 
 // ---------------------------------------------------------------- cabecera y pie
@@ -239,88 +227,94 @@ fn cabecera(app: &mut App, f: &mut Frame, area: Rect) {
         vec![
             Span::styled(format!("{SPARK} "), bold(RED)),
             Span::styled(spaced("LIZARBE"), bold(PHOSPHOR)),
-            Span::styled(format!("   {}", t("app.bienvenida")), fg(SLATE)),
         ],
     );
     let actual = app.capitulo().numero().unwrap_or(0);
-    // Puntos de capítulo, clicables.
-    let total = Cap::NUMERADOS as u16;
-    let barra = anim::barra(actual as f32 / total as f32, 10);
-    let ancho_puntos = total * 2;
-    let x0 = area
+    let total = Cap::NUMERADOS;
+    let cuenta = format!("{actual} / {total}");
+    let ayuda = format!("? {}", t("ayuda.titulo"));
+    let x = area
         .right()
-        .saturating_sub(2 + ancho_puntos + 2 + 10 + 2 + 4);
-    for i in 1..=Cap::NUMERADOS {
-        let (c, st) = match i.cmp(&actual) {
-            std::cmp::Ordering::Less => ("●", fg(PHOSPHOR)),
-            std::cmp::Ordering::Equal => ("◆", bold(RED)),
-            std::cmp::Ordering::Greater => ("○", fg(SLATE)),
-        };
-        let x = x0 + (i as u16 - 1) * 2;
-        let lit = app.hover == Some(Hit::Cap(i));
-        texto(f, x, area.y, c, if lit { bold(CADMIUM) } else { st });
-        app.hits.push((Rect::new(x, area.y, 2, 1), Hit::Cap(i)));
-    }
+        .saturating_sub(2 + (cuenta.width() + 3 + ayuda.width()) as u16);
     put(
         f,
-        x0 + ancho_puntos + 2,
+        x,
         area.y,
         vec![
-            Span::styled(barra, fg(RED)),
-            Span::styled(format!("  {actual}/{total}"), fg(SILVER)),
+            Span::styled(ayuda, fg(SLATE)),
+            Span::raw("   "),
+            Span::styled(cuenta, bold(PHOSPHOR)),
         ],
     );
-    lizarbe_core::ui::rule_h(
-        f,
-        area.x + 2,
-        area.y + 1,
-        area.width.saturating_sub(4),
-        STEEL,
-    );
+    // Una raya fina dividida en un tramo por paso; los hechos, en rojo.
+    let ancho = area.width.saturating_sub(4);
+    let tramo = (ancho / total as u16).max(2);
+    for i in 1..=total {
+        let x = area.x + 2 + (i as u16 - 1) * tramo;
+        let w = if i == total {
+            (area.x + 2 + ancho).saturating_sub(x)
+        } else {
+            tramo - 1
+        };
+        let lit = app.hover == Some(Hit::Cap(i));
+        let (c, st) = match i.cmp(&actual) {
+            std::cmp::Ordering::Greater => ('─', fg(STEEL)),
+            _ => ('━', fg(RED)),
+        };
+        let st = if lit { bold(CADMIUM) } else { st };
+        texto(f, x, area.y + 1, &c.to_string().repeat(w as usize), st);
+        app.hits
+            .push((Rect::new(x, area.y + 1, w + 1, 1), Hit::Cap(i)));
+    }
 }
 
+/// Pie común a todos los pasos: volver a la izquierda, lo propio del paso en
+/// medio y, a la derecha y siempre en el mismo sitio, continuar.
 fn pie(app: &mut App, f: &mut Frame, area: Rect) {
     let y = area.bottom() - 1;
     lizarbe_core::ui::rule_h(f, area.x + 2, y - 1, area.width.saturating_sub(4), STEEL);
-    let clave = format!(
-        "pie.{}",
-        match app.capitulo() {
-            Cap::Practica => "practica",
-            Cap::Terminal => "terminal",
-            Cap::Telefono => "telefono",
-            Cap::Escritorio => "escritorio",
-            Cap::Configurar => "configurar",
-            Cap::Conceptos => "conceptos",
-            Cap::Atajos => "atajos",
-            _ => "general",
-        }
-    );
-    texto(
-        f,
-        area.x + 2,
-        y,
-        &truncate(&t(&clave), area.width.saturating_sub(46) as usize),
-        fg(SILVER),
-    );
-    // Botones de navegación a la derecha.
-    let ant = format!("[←] {}", t("nav.anterior"));
-    let sig = format!("{} [→]", t("nav.siguiente"));
-    let w_sig = sig.width() as u16;
-    let x_sig = area.right().saturating_sub(2 + w_sig);
-    let x_ant = x_sig.saturating_sub(2 + ant.width() as u16);
-    let lit = |h: Hit| {
+    let lit = |app: &App, h: Hit, normal| {
         if app.hover == Some(h) {
             bold(CADMIUM)
         } else {
-            fg(PHOSPHOR)
+            normal
         }
     };
-    texto(f, x_ant, y, &ant, lit(Hit::Anterior));
-    texto(f, x_sig, y, &sig, lit(Hit::Siguiente));
-    app.hits
-        .push((Rect::new(x_ant, y, ant.width() as u16, 1), Hit::Anterior));
+
+    // Continuar (a la derecha).
+    let etiqueta = format!(" {} →", app.etiqueta_enter());
+    let tecla_enter = tecla("Enter", true);
+    let w_sig = tecla_enter.content.width() as u16 + etiqueta.width() as u16;
+    let x_sig = area.right().saturating_sub(2 + w_sig);
+    let st = lit(app, Hit::Siguiente, bold(PHOSPHOR));
+    put(f, x_sig, y, vec![tecla_enter, Span::styled(etiqueta, st)]);
     app.hits
         .push((Rect::new(x_sig, y, w_sig, 1), Hit::Siguiente));
+
+    // Volver (a la izquierda).
+    let mut x = area.x + 2;
+    if app.cap > 0 {
+        let atras = format!("← {}", t("nav.atras"));
+        let w = atras.width() as u16;
+        let st = lit(app, Hit::Anterior, fg(SILVER));
+        texto(f, x, y, &atras, st);
+        app.hits.push((Rect::new(x, y, w, 1), Hit::Anterior));
+        x += w + 4;
+    }
+
+    // Lo propio del paso.
+    if let Some((k, etiqueta, accion)) = app.accion_secundaria() {
+        let hit = Hit::Boton(accion);
+        let spans = vec![
+            tecla(k, false),
+            Span::styled(format!(" {etiqueta}"), lit(app, hit, fg(PHOSPHOR))),
+        ];
+        let w = ancho_spans(&spans);
+        if x + w + 2 < x_sig {
+            put(f, x, y, spans);
+            app.hits.push((Rect::new(x, y, w, 1), hit));
+        }
+    }
 }
 
 // ---------------------------------------------------------------- avisos y ventanas
@@ -385,18 +379,15 @@ fn modal_salir(app: &mut App, f: &mut Frame, area: Rect) {
 }
 
 fn modal_ayuda(f: &mut Frame, area: Rect) {
-    let r = lizarbe_core::ui::centered(area, 70, 18);
+    let r = lizarbe_core::ui::centered(area, 70, 12);
     limpiar(f, r);
     marco(f, r, Marco::Doble, RED, &t("ayuda.titulo"));
     let filas = [
-        ("← →", "ayuda.capitulos"),
-        ("1 … 8", "ayuda.numeros"),
+        ("Enter", "ayuda.continuar"),
+        ("Espacio", "ayuda.espacio"),
+        ("←", "ayuda.atras"),
         ("↑ ↓", "ayuda.elegir"),
-        ("Enter", "ayuda.accion"),
-        ("Tab", "ayuda.tab"),
-        ("S", "ayuda.saltar"),
-        ("?", "ayuda.ayuda"),
-        ("Q / Esc", "ayuda.salir"),
+        ("Esc", "ayuda.salir"),
     ];
     let mut y = r.y + 2;
     for (k, clave) in filas {
@@ -405,7 +396,7 @@ fn modal_ayuda(f: &mut Frame, area: Rect) {
             r.x + 3,
             y,
             vec![
-                tecla(k, false),
+                tecla(k, k == "Enter"),
                 Span::styled(format!("  {}", t(clave)), fg(SILVER)),
             ],
         );
@@ -413,17 +404,6 @@ fn modal_ayuda(f: &mut Frame, area: Rect) {
     }
     y += 1;
     parrafo(f, r.x + 3, y, r.width - 6, &t("ayuda.pie"), fg(SLATE));
-}
-
-/// Una línea de estilo «reloj de arranque»: `✦ Etiqueta ......... valor`.
-pub fn dato(etiqueta: &str, valor: &str, ancho: usize) -> Line<'static> {
-    let puntos = ancho.saturating_sub(etiqueta.width() + valor.width() + 3);
-    Line::from(vec![
-        Span::styled(format!("{SPARK} "), bold(RED)),
-        Span::styled(etiqueta.to_string(), fg(SILVER)),
-        Span::styled(format!(" {} ", "·".repeat(puntos)), fg(STEEL)),
-        Span::styled(valor.to_string(), bold(PHOSPHOR)),
-    ])
 }
 
 /// Recorta una línea de spans a `ancho` celdas.
@@ -557,66 +537,117 @@ mod tests {
     }
 
     #[test]
-    fn each_chapter_shows_its_title_and_the_header_progress() {
+    fn each_chapter_shows_its_title_the_header_progress_and_the_same_footer() {
         let titulos = [
-            (1, "LA TECLA SUPER"),
-            (2, "PRÁCTICA EN VIVO"),
-            (3, "LA TERMINAL NO MUERDE"),
-            (4, "CONECTE SU TELÉFONO"),
-            (5, "SU ESCRITORIO, A SU GUSTO"),
-            (6, "CONFIGURAR SIN EDITAR ARCHIVOS"),
-            (7, "CONCEPTOS CLAVE"),
-            (8, "ATAJOS IMPRESCINDIBLES"),
+            (1, "La tecla Super"),
+            (2, "Práctica en vivo"),
+            (3, "La terminal no muerde"),
+            (4, "Conecte su teléfono"),
+            (5, "Su escritorio, a su gusto"),
+            (6, "Configurar sin editar archivos"),
+            (7, "Conceptos clave"),
+            (8, "Atajos imprescindibles"),
         ];
         for (n, titulo) in titulos {
             let mut a = app_en(n);
             let t = texto_de(&mut a, 130, 40);
-            let compacto: String = t.split_whitespace().collect();
-            let esperado: String = lizarbe_core::ui::spaced(titulo)
-                .split_whitespace()
-                .collect();
+            assert!(t.contains(titulo), "paso {n}: falta «{titulo}»\n{t}");
+            assert!(t.contains(&format!("{n} / 8")), "paso {n}: falta el avance");
+            // Siempre se ve cómo continuar y cómo volver, en el mismo sitio.
+            assert!(t.contains("Atrás"), "paso {n}: falta Atrás");
+            let ultima = t.lines().last().unwrap();
             assert!(
-                compacto.contains(&esperado),
-                "capítulo {n}: falta «{titulo}»\n{t}"
+                ultima.contains("Enter") && ultima.trim_end().ends_with("→"),
+                "paso {n}: falta Continuar en la última fila\n{ultima}"
             );
+            // Y una frase que dice qué hacer.
             assert!(
-                t.contains(&format!("{n}/8")),
-                "capítulo {n}: falta el avance"
-            );
-            assert!(
-                t.contains("[→] ") || t.contains("Siguiente"),
-                "falta Siguiente"
+                t.contains('▸') || t.contains('✓'),
+                "paso {n}: falta la guía"
             );
         }
     }
 
     #[test]
-    fn boot_animation_progresses_from_noise_to_the_full_greeting() {
+    fn the_footer_shows_the_step_action_only_where_there_is_one() {
+        for (n, esperado) in [(4, "Vincular"), (5, "Aplicar"), (6, "Abrir ahora")] {
+            let mut a = app_en(n);
+            let ultima = texto_de(&mut a, 130, 40)
+                .lines()
+                .last()
+                .unwrap()
+                .to_string();
+            assert!(
+                ultima.contains("Espacio") && ultima.contains(esperado),
+                "paso {n}: {ultima}"
+            );
+        }
+        for n in [1, 7, 8] {
+            let mut a = app_en(n);
+            let ultima = texto_de(&mut a, 130, 40)
+                .lines()
+                .last()
+                .unwrap()
+                .to_string();
+            assert!(!ultima.contains("Espacio"), "paso {n}: {ultima}");
+        }
+    }
+
+    #[test]
+    fn boot_screen_is_minimal_and_has_the_crt_logo() {
         lizarbe_core::i18n::set_lang(lizarbe_core::i18n::Lang::Es);
         let mut a = App::new(true, 0);
         a.usuario = "Ana".into();
-        a.t = 0.1;
-        let al_inicio = texto_de(&mut a, 120, 36);
-        assert!(!al_inicio.contains("Le damos la bienvenida"));
-        assert!(!al_inicio.contains("para comenzar"));
-        a.t = 3.3;
-        let datos = texto_de(&mut a, 120, 36);
-        assert!(datos.contains("Núcleo"), "{datos}");
-        assert!(!datos.contains("Le damos la bienvenida"));
+        a.t = 0.02;
+        assert!(!texto_de(&mut a, 120, 36).contains('▀'));
+        // Encendido: primero una línea que se ensancha…
+        a.t = 0.3;
+        let linea = texto_de(&mut a, 120, 36);
+        assert!(
+            linea.contains('━') && !linea.contains("Comenzar"),
+            "{linea}"
+        );
+        // …luego el logo se aclara por tramas, sin texto de invitación aún.
+        a.t = 1.0;
+        let tramas = texto_de(&mut a, 120, 36);
+        assert!(tramas.contains('░') && !tramas.contains('▀'), "{tramas}");
+        assert!(!tramas.contains("Le damos la bienvenida"));
+        a.t = 2.6;
+        assert!(texto_de(&mut a, 120, 36).contains('▀'));
         a.t = 12.0;
-        let final_ = texto_de(&mut a, 120, 36);
-        for needle in [
-            "Le damos la bienvenida a su Lizarbe, Ana.",
-            "para comenzar",
-            "Telemetría",
-            "ninguna",
-            "612 MB en uso",
-            "OK",
-        ] {
-            assert!(final_.contains(needle), "falta «{needle}»\n{final_}");
+        let completo = texto_de(&mut a, 120, 36);
+        for needle in ["Le damos la bienvenida, Ana.", "Comenzar", "█"] {
+            assert!(completo.contains(needle), "falta «{needle}»\n{completo}");
         }
-        // El logotipo ya está completo: bloques sólidos.
-        assert!(final_.contains('█'));
+        // Ya no hay lema ni datos técnicos: solo logo, nombre, saludo e invitación.
+        for sobra in [
+            "Una máquina con alma",
+            "Núcleo",
+            "Telemetría",
+            "LZB // 2026",
+        ] {
+            assert!(!completo.contains(sobra), "sobra «{sobra}»\n{completo}");
+        }
+    }
+
+    #[test]
+    fn the_crt_logo_flickers_and_scans_over_time() {
+        lizarbe_core::i18n::set_lang(lizarbe_core::i18n::Lang::Es);
+        let mut a = App::new(true, 0);
+        // Con el haz que baja y los saltos de línea, la imagen no es estática.
+        let mut term = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        let mut colores = std::collections::HashSet::new();
+        for k in 0..40 {
+            a.t = 6.0 + k as f32 * 0.07;
+            term.draw(|fr| dibujar(&mut a, fr)).unwrap();
+            let buf = term.backend().buffer().clone();
+            let sig: Vec<_> = (0..36)
+                .flat_map(|y| (0..60).map(move |x| (x, y)))
+                .map(|(x, y)| format!("{:?}", buf[(x, y)].fg))
+                .collect();
+            colores.insert(sig.join(""));
+        }
+        assert!(colores.len() > 5, "el efecto CRT debe animarse");
     }
 
     #[test]
@@ -643,9 +674,8 @@ mod tests {
             "Abra el menú de Omarchy",
             "Abra una terminal",
             "Viaje al escritorio 2",
-            "Lo que su Lizarbe ve",
+            "Haga esto ahora: abra el menú de Omarchy",
             "DEMOSTRACIÓN",
-            "0/6",
         ] {
             assert!(t.contains(needle), "falta «{needle}»\n{t}");
         }
@@ -654,8 +684,8 @@ mod tests {
             data: "omarchy-menu".into(),
         });
         let t = texto_de(&mut a, 130, 40);
-        assert!(t.contains("1/6"));
         assert!(t.contains("Se abrió el menú"), "{t}");
+        assert!(t.contains("Haga esto ahora: abra una terminal"), "{t}");
         // El aviso de logro entra deslizándose y a los 0,5 s ya se ve entero.
         a.t += 0.5;
         let t = texto_de(&mut a, 130, 40);
@@ -684,7 +714,7 @@ mod tests {
         let t = texto_de(&mut a, 130, 40);
         for needle in [
             "Instale KDE Connect",
-            "Vincule desde aquí",
+            "Elija su teléfono abajo",
             "Teléfonos cercanos",
             "Teléfono de ejemplo",
             "Todas",
@@ -698,7 +728,7 @@ mod tests {
         assert!(pequena.contains("Amplíe la ventana"), "{pequena}");
         let grande = texto_de(&mut a, 130, 48);
         assert!(!grande.contains("Amplíe la ventana"));
-        a.on_key(tecla_(KeyCode::Char('p')));
+        a.on_key(tecla_(KeyCode::Char(' ')));
         assert!(texto_de(&mut a, 130, 48).contains("Teléfono conectado"));
     }
 
@@ -715,7 +745,7 @@ mod tests {
         ] {
             assert!(t.contains(needle), "falta «{needle}»\n{t}");
         }
-        a.on_key(tecla_(KeyCode::Enter));
+        a.on_key(tecla_(KeyCode::Char(' ')));
         assert!(texto_de(&mut a, 130, 40).contains("aplicado"));
     }
 
@@ -789,13 +819,11 @@ mod tests {
         a.usuario = "Ana".into();
         let t = texto_de(&mut a, 120, 36);
         for needle in [
-            "SU EQUIPO ESTÁ LISTO",
-            "Preparado para usted, Ana",
+            "Su equipo está listo",
             "2 de 9 logros",
             "Teléfono conectado",
             "Empezar a usar su Lizarbe",
             "Repetir el recorrido",
-            "LZB // 2026",
         ] {
             assert!(t.contains(needle), "falta «{needle}»\n{t}");
         }

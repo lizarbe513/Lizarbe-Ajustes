@@ -16,51 +16,6 @@ pub enum Msg {
     Sonar(bool),
 }
 
-/// Datos que se enseñan en la pantalla de arranque.
-#[derive(Debug, Clone, Default)]
-pub struct Info {
-    pub nucleo: String,
-    pub hyprland: String,
-    pub memoria_mb: Option<u64>,
-}
-
-pub fn info() -> Info {
-    Info {
-        nucleo: std::fs::read_to_string("/proc/sys/kernel/osrelease")
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default(),
-        hyprland: salida("hyprctl", &["version"])
-            .and_then(|s| parse_version_hyprland(&s))
-            .unwrap_or_default(),
-        memoria_mb: std::fs::read_to_string("/proc/meminfo")
-            .ok()
-            .and_then(|t| parse_memoria(&t)),
-    }
-}
-
-/// Memoria en uso (MB) a partir de `/proc/meminfo`.
-pub fn parse_memoria(texto: &str) -> Option<u64> {
-    let campo = |nombre: &str| -> Option<u64> {
-        texto
-            .lines()
-            .find_map(|l| l.strip_prefix(nombre))?
-            .split_whitespace()
-            .next()?
-            .parse()
-            .ok()
-    };
-    let total = campo("MemTotal:")?;
-    let libre = campo("MemAvailable:")?;
-    Some(total.saturating_sub(libre) / 1024)
-}
-
-/// «Hyprland 0.56.2 built from…» → «0.56.2».
-pub fn parse_version_hyprland(texto: &str) -> Option<String> {
-    let linea = texto.lines().next()?;
-    let mut it = linea.split_whitespace();
-    (it.next()? == "Hyprland").then(|| it.next().map(|v| v.trim_start_matches('v').to_string()))?
-}
-
 /// Primer nombre del usuario (campo GECOS) o su nombre de usuario.
 pub fn nombre_usuario() -> String {
     let user = std::env::var("USER").unwrap_or_default();
@@ -329,22 +284,6 @@ pub fn marca_pendiente() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn memory_in_use_comes_from_meminfo() {
-        let t = "MemTotal:       16384000 kB\nMemFree: 1 kB\nMemAvailable:   15360000 kB\n";
-        assert_eq!(parse_memoria(t), Some(1000));
-        assert_eq!(parse_memoria("nada"), None);
-    }
-
-    #[test]
-    fn hyprland_version_is_the_second_word() {
-        assert_eq!(
-            parse_version_hyprland("Hyprland 0.56.2 built from branch v0.56.2"),
-            Some("0.56.2".into())
-        );
-        assert_eq!(parse_version_hyprland("otra cosa"), None);
-    }
 
     #[test]
     fn phones_are_read_from_kdeconnect() {

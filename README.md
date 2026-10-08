@@ -74,14 +74,16 @@ lizarbe-widgets --section plugins       # bar, widgets, plugins, idle, appearanc
 
 ## Bienvenida
 
-Guía de primer inicio para quien llega de Windows: la terminal como interfaz, pero sin miedo. Con la
-identidad visual de Lizarbe (colores fijos de marca, el isotipo y el logotipo que emergen de tramas
-`░▒▓█`, ✦ como marca) recorre ocho capítulos y termina con un «certificado» de logros:
+Guía de primer inicio para quien llega de Windows: la terminal como interfaz, pero sin miedo. Es
+minimalista y se maneja siempre igual: **Enter continúa**, **Espacio hace lo que pide el paso**
+(probar, aplicar, abrir) y **←** vuelve; una frase bajo el título dice qué hacer ahora y se pone en
+verde (✓) al lograrlo. El arranque muestra el isotipo con efecto de monitor CRT (encendido, rayas de
+barrido, rejilla de píxeles, parpadeo). Recorre ocho pasos y termina con un resumen de logros:
 
 1. **La tecla Super** y el «Super + algo = una orden».
 2. **Práctica en vivo**: «Pulse Super + Espacio»… y Hyprland (`.socket2.sock`) cuenta que el usuario
    lo hizo de verdad (menú abierto, terminal nueva, ventana cerrada, cambio de escritorio, pantalla
-   completa). Un «radar» enseña lo que se detecta.
+   completa). Una línea «EN VIVO» enseña lo último que se detecta.
 3. **La terminal no muerde**: una terminal de prueba donde solo se aceptan órdenes inofensivas
    (`fastfetch`, `lizarbe status`, `date`…), con sugerencia y `Tab`.
 4. **Conectar el teléfono**: QR de la descarga de KDE Connect (probado: se decodifica con `zbarimg`),

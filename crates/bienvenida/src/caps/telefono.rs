@@ -78,38 +78,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 Span::styled(t(&format!("tel.paso{n}")), fg(PHOSPHOR)),
             ],
         );
-        let filas = parrafo(
-            f,
-            x + 3,
-            y + 1,
-            w.saturating_sub(3),
-            &t(&format!("tel.paso{n}.d")),
-            fg(SLATE),
-        );
-        y += 1 + filas + 1;
-    }
-
-    // Avisos del sistema.
-    if !app.kde_instalado {
-        y += parrafo(
-            f,
-            x,
-            y,
-            w,
-            &format!("▲ {}", t("tel.no_instalado")),
-            bold(CADMIUM),
-        );
-    } else if !app.cortafuegos {
-        y += parrafo(
-            f,
-            x,
-            y,
-            w,
-            &format!("▲ {}", t("tel.cortafuegos")),
-            bold(CADMIUM),
-        );
-        texto(f, x, y, &t("tel.abrir_puertos"), fg(PHOSPHOR));
-        y += 1;
+        y += 2;
     }
     y += 1;
 
@@ -162,7 +131,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             .push((Rect::new(caja.x + 1, yy, caja.width - 2, 1), Hit::Fila(i)));
     }
 
-    // Acciones y avisos.
+    // Avisos y, con el teléfono conectado, hacerlo sonar.
     let ya = r.bottom().saturating_sub(2);
     if !app.tel_aviso.is_empty() {
         texto(
@@ -172,25 +141,9 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             &truncate(&app.tel_aviso, w as usize),
             bold(CADMIUM),
         );
-    } else if app.tiene("telefono") {
-        texto(
-            f,
-            x,
-            ya,
-            &format!("{SPARK} {}", t("tel.logrado")),
-            bold(GREEN),
-        );
     }
-    let mut xb = x;
-    for (tecla_, clave, accion) in [
-        ("P", "btn.vincular", 'p'),
-        ("R", "btn.sonar", 'r'),
-        ("A", "btn.abrir_app", 'a'),
-    ] {
-        let etiqueta = t(clave);
-        if xb + etiqueta.chars().count() as u16 + 8 > r.right() {
-            break;
-        }
-        xb += boton(app, f, xb, ya + 1, Boton::new(tecla_, &etiqueta, accion)) + 3;
+    if app.tiene("telefono") {
+        let etiqueta = t("btn.sonar");
+        boton(app, f, x, ya + 1, Boton::new("R", &etiqueta, 'r'));
     }
 }

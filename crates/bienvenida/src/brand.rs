@@ -18,7 +18,6 @@ pub const PHOSPHOR: Color = Color::Rgb(0xF0, 0xF3, 0xF8);
 pub const GREEN: Color = Color::Rgb(0x1A, 0xB0, 0x54);
 pub const CADMIUM: Color = Color::Rgb(0xF8, 0xD8, 0x18);
 pub const COBALT: Color = Color::Rgb(0x4B, 0x8E, 0xFF);
-pub const TEAL: Color = Color::Rgb(0x28, 0xA8, 0x88);
 
 /// La marca de Lizarbe: el destello.
 pub const SPARK: &str = "✦";

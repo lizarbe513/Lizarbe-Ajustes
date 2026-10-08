@@ -34,7 +34,7 @@ mod tests {
         use crate::contenido::{CONCEPTOS, HERRAMIENTAS};
         let mut claves: Vec<String> = vec![];
         for r in crate::retos::Reto::TODOS {
-            for sufijo in ["", ".d", ".pista"] {
+            for sufijo in ["", ".pista"] {
                 claves.push(format!("reto.{}{sufijo}", r.id()));
             }
         }
@@ -59,23 +59,9 @@ mod tests {
             "atajos",
         ] {
             claves.push(format!("cap.{c}"));
-            claves.push(format!("cap.{c}.sub"));
-        }
-        for c in [
-            "general",
-            "practica",
-            "terminal",
-            "telefono",
-            "escritorio",
-            "configurar",
-            "conceptos",
-            "atajos",
-        ] {
-            claves.push(format!("pie.{c}"));
         }
         for n in 1..=3 {
             claves.push(format!("tel.paso{n}"));
-            claves.push(format!("tel.paso{n}.d"));
         }
         for e in ["conectado", "lejos", "solicitado", "disponible"] {
             claves.push(format!("tel.est.{e}"));

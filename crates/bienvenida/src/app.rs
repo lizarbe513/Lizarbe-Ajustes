@@ -16,9 +16,9 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 
 use crate::contenido::{CONCEPTOS, HERRAMIENTAS, LOGROS, TIENDAS, total_atajos};
-use crate::i18n::t;
+use crate::i18n::{t, tf};
 use crate::retos::{Estado as EstadoReto, Reto};
-use crate::sistema::{self, Estado, Info, Msg, Orden, Telefono};
+use crate::sistema::{self, Estado, Msg, Orden, Telefono};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cap {
@@ -74,6 +74,13 @@ pub enum Hit {
     Qr(usize),
 }
 
+/// La frase que dice qué hacer en el paso actual.
+pub struct Guia {
+    pub texto: String,
+    /// El paso ya está cumplido y solo falta continuar.
+    pub hecho: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Modal {
     Ninguno,
@@ -89,7 +96,6 @@ pub struct App {
     t0: Instant,
     pub demo: bool,
     pub usuario: String,
-    pub info: Info,
     escuchador: Option<Listener>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -162,15 +168,6 @@ impl App {
             } else {
                 sistema::nombre_usuario()
             },
-            info: if demo {
-                Info {
-                    nucleo: "7.2.5".into(),
-                    hyprland: "0.56".into(),
-                    memoria_mb: Some(612),
-                }
-            } else {
-                sistema::info()
-            },
             escuchador: if demo { None } else { Listener::start() },
             tx,
             rx,
@@ -224,6 +221,91 @@ impl App {
         self.escuchador.is_some()
     }
 
+    // ------------------------------------------------------------ guía
+
+    /// Lo que el usuario tiene que hacer ahora en este paso, en una frase.
+    /// `hecho` pasa a `true` cuando ya lo logró y solo falta continuar.
+    pub fn guia(&self) -> Guia {
+        let (texto, hecho) = match self.capitulo() {
+            Cap::Practica => match self.reto_actual() {
+                None => (t("guia.practica.hecho"), true),
+                Some(i) => {
+                    let reto = t(&format!("reto.{}", Reto::TODOS[i].id()));
+                    let clave = if self.en_vivo() {
+                        "guia.practica"
+                    } else {
+                        "guia.practica.demo"
+                    };
+                    // «Abra el menú…» → «abra el menú…» (sin tocar «Omarchy»).
+                    let mut letras = reto.chars();
+                    let reto: String = letras
+                        .next()
+                        .into_iter()
+                        .flat_map(char::to_lowercase)
+                        .chain(letras)
+                        .collect();
+                    (tf(clave, &[("reto", &reto)]), false)
+                }
+            },
+            Cap::Terminal if self.tiene("fastfetch") => (t("guia.terminal.hecho"), true),
+            Cap::Terminal => (t("guia.terminal"), false),
+            Cap::Telefono => self.guia_telefono(),
+            Cap::Escritorio => match &self.tema_aplicado {
+                Some(tema) => (tf("guia.escritorio.hecho", &[("tema", tema)]), true),
+                None => (t("guia.escritorio"), false),
+            },
+            Cap::Configurar if self.tiene("ajustes") => (t("guia.configurar.hecho"), true),
+            Cap::Configurar => (t("guia.configurar"), false),
+            Cap::Conceptos | Cap::Atajos => (t("guia.lista"), false),
+            _ => (t("guia.leer"), false),
+        };
+        Guia { texto, hecho }
+    }
+
+    fn guia_telefono(&self) -> (String, bool) {
+        if self.tiene("telefono") {
+            return (t("guia.telefono.hecho"), true);
+        }
+        if !self.kde_instalado {
+            return (t("guia.telefono.sin_kde"), false);
+        }
+        if !self.cortafuegos {
+            return (t("guia.telefono.puertos"), false);
+        }
+        let texto = match self.telefono_elegido() {
+            Some(p) if p.estado == Estado::Nuevo => {
+                tf("guia.telefono.nuevo", &[("nombre", &p.nombre)])
+            }
+            Some(p) if p.estado == Estado::Solicitado => t("guia.telefono.solicitado"),
+            _ => t("guia.telefono"),
+        };
+        (texto, false)
+    }
+
+    /// Lo que hace Enter en este paso, para el botón de abajo a la derecha.
+    pub fn etiqueta_enter(&self) -> String {
+        match self.capitulo() {
+            Cap::Terminal if !self.entrada.is_empty() => t("nav.ejecutar"),
+            Cap::Terminal if !self.tiene("fastfetch") => t("nav.probar"),
+            _ => t("nav.continuar"),
+        }
+    }
+
+    /// La acción propia del paso (tecla, etiqueta, tecla que la activa), si la hay.
+    pub fn accion_secundaria(&self) -> Option<(&'static str, String, char)> {
+        match self.capitulo() {
+            Cap::Practica if self.reto_actual().is_none() => None,
+            Cap::Practica if self.en_vivo() && !self.demo => Some(("S", t("acc.saltar"), 's')),
+            Cap::Practica => Some(("Espacio", t("acc.hecho"), ' ')),
+            Cap::Telefono if self.telefono_elegido().is_some() => {
+                Some(("Espacio", t("btn.vincular"), ' '))
+            }
+            Cap::Escritorio if !self.temas.is_empty() => Some(("Espacio", t("btn.aplicar"), ' ')),
+            Cap::Configurar => Some(("Espacio", t("herr.abrir"), ' ')),
+            _ => None,
+        }
+    }
+
     // ------------------------------------------------------------ navegación
 
     pub fn ir(&mut self, i: usize) {
@@ -274,6 +356,7 @@ impl App {
         self.retos.iter().position(|e| *e == EstadoReto::Pendiente)
     }
 
+    #[cfg(test)]
     pub fn retos_cumplidos(&self) -> usize {
         self.retos
             .iter()
@@ -645,11 +728,11 @@ impl App {
             return;
         }
         if cap == Cap::Arranque
-            && self.cap_t() < 6.0
+            && self.cap_t() < crate::caps::arranque::LISTO
             && matches!(key.code, KeyCode::Enter | KeyCode::Char(' '))
         {
             // Un primer Enter salta la animación de arranque.
-            self.cap_inicio = self.t - 7.0;
+            self.cap_inicio = self.t - crate::caps::arranque::LISTO - 1.0;
             return;
         }
         match key.code {
@@ -663,13 +746,19 @@ impl App {
             KeyCode::Down | KeyCode::Char('j') => self.mover_seleccion(1),
             KeyCode::PageUp => self.mover_seleccion(-5),
             KeyCode::PageDown => self.mover_seleccion(5),
-            KeyCode::Enter | KeyCode::Char(' ') => {
+            // Enter siempre continúa; Espacio hace lo propio del paso.
+            KeyCode::Enter => {
                 if cap == Cap::Final {
                     self.terminar(false);
-                } else if cap == Cap::Practica && key.code == KeyCode::Char(' ') {
-                    self.simular_reto_si_corresponde();
-                } else if !self.accion_principal() {
+                } else {
                     self.siguiente();
+                }
+            }
+            KeyCode::Char(' ') => {
+                if cap == Cap::Practica {
+                    self.simular_reto_si_corresponde();
+                } else {
+                    self.accion_principal();
                 }
             }
             KeyCode::Char('s') if cap == Cap::Practica => self.saltar_reto(),
@@ -727,6 +816,14 @@ impl App {
                 true
             }
             KeyCode::Enter => {
+                if self.entrada.is_empty() {
+                    if self.tiene("fastfetch") {
+                        // Ya probó: con la línea vacía, Enter continúa.
+                        return false;
+                    }
+                    // Aún no probó: Enter ejecuta la sugerencia.
+                    self.entrada = self.sugerencia();
+                }
                 self.ejecutar_terminal();
                 true
             }
@@ -953,7 +1050,7 @@ mod tests {
         a.t = 1.0;
         a.on_key(tecla(KeyCode::Enter));
         assert_eq!(a.capitulo(), Cap::Arranque);
-        assert!(a.cap_t() >= 6.0);
+        assert!(a.cap_t() >= crate::caps::arranque::LISTO);
         a.on_key(tecla(KeyCode::Enter));
         assert_eq!(a.capitulo(), Cap::Super);
     }
@@ -1029,6 +1126,45 @@ mod tests {
     }
 
     #[test]
+    fn enter_always_continues_except_where_it_has_a_job() {
+        let mut a = demo();
+        // Terminal: antes de probar, Enter con la línea vacía ejecuta la sugerencia…
+        a.ir(3);
+        assert_eq!(a.etiqueta_enter(), t("nav.probar"));
+        a.on_key(tecla(KeyCode::Enter));
+        assert!(a.tiene("fastfetch"));
+        assert_eq!(a.capitulo(), Cap::Terminal);
+        // …y una vez hecho, Enter continúa.
+        assert_eq!(a.etiqueta_enter(), t("nav.continuar"));
+        a.on_key(tecla(KeyCode::Enter));
+        assert_eq!(a.capitulo(), Cap::Telefono);
+        // En el resto de pasos, Enter solo continúa y Espacio hace lo propio del paso.
+        a.ir(5);
+        a.on_key(tecla(KeyCode::Enter));
+        assert_eq!(a.capitulo(), Cap::Configurar);
+        assert!(a.tema_aplicado.is_none() && !a.tiene("ajustes"));
+        a.on_key(tecla(KeyCode::Char(' ')));
+        assert_eq!(a.capitulo(), Cap::Configurar);
+        assert!(a.tiene("ajustes"));
+    }
+
+    #[test]
+    fn the_guide_tells_what_to_do_and_flips_when_done() {
+        let mut a = demo();
+        a.ir(3);
+        let g = a.guia();
+        assert!(!g.hecho && g.texto.contains("fastfetch"));
+        a.on_key(tecla(KeyCode::Enter));
+        let g = a.guia();
+        assert!(g.hecho && g.texto.contains("Enter"));
+        // Cada paso numerado tiene una frase que dice qué hacer.
+        for i in 1..=Cap::NUMERADOS {
+            a.ir(i);
+            assert!(!a.guia().texto.is_empty(), "paso {i}");
+        }
+    }
+
+    #[test]
     fn dangerous_commands_are_refused_in_the_toy_terminal() {
         let mut a = demo();
         a.ir(3);
@@ -1081,7 +1217,7 @@ mod tests {
         a.ir(5);
         assert_eq!(a.temas[0], "Lizarbe");
         a.on_key(tecla(KeyCode::Down));
-        a.on_key(tecla(KeyCode::Enter));
+        a.on_key(tecla(KeyCode::Char(' ')));
         assert_eq!(a.tema_aplicado.as_deref(), Some("Lizarbe Light"));
         assert!(a.tiene("tema"));
         a.on_key(tecla(KeyCode::Char('z')));
@@ -1093,7 +1229,7 @@ mod tests {
         let mut a = demo();
         a.ir(6);
         a.on_key(tecla(KeyCode::Down));
-        a.on_key(tecla(KeyCode::Enter));
+        a.on_key(tecla(KeyCode::Char(' ')));
         assert!(a.tiene("ajustes"));
         // Los límites de la lista se respetan.
         a.mover_seleccion(100);

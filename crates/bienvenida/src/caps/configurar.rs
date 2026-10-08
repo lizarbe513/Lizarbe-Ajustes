@@ -9,7 +9,7 @@ use crate::app::{App, Hit};
 use crate::brand::*;
 use crate::contenido::HERRAMIENTAS;
 use crate::i18n::t;
-use crate::ui::{Boton, Marco, boton, marco, parrafo, texto, titulo_capitulo};
+use crate::ui::{Marco, marco, parrafo, titulo_capitulo};
 use lizarbe_core::ui::{put, truncate};
 
 pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
@@ -59,11 +59,10 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     if fw < 30 {
         return;
     }
-    let alto = r.bottom().saturating_sub(y0).min(14);
+    let alto = r.bottom().saturating_sub(y0).min(10);
     let caja = Rect::new(fx, y0, fw, alto);
     marco(f, caja, Marco::Grueso, STEEL, &t(&format!("herr.{}", h.id)));
-    texto(f, caja.x + 3, caja.y + 2, h.icono, bold(RED));
-    let mut y = caja.y + 4;
+    let mut y = caja.y + 2;
     y += parrafo(
         f,
         caja.x + 3,
@@ -81,22 +80,4 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             Span::styled(t(&format!("herr.{}.ruta", h.id)), fg(SILVER)),
         ],
     );
-    // Botón «Abrir ahora».
-    let yb = caja.bottom().saturating_sub(2);
-    boton(
-        app,
-        f,
-        caja.x + 3,
-        yb,
-        Boton::new("Enter", &t("herr.abrir"), '\n').principal(),
-    );
-    if app.tiene("ajustes") {
-        texto(
-            f,
-            caja.x + 3,
-            yb.saturating_sub(1),
-            &format!("{SPARK} {}", t("herr.abierta")),
-            fg(GREEN),
-        );
-    }
 }
