@@ -9,9 +9,17 @@ use std::sync::mpsc::Sender;
 #[derive(Debug)]
 pub enum Msg {
     Telefonos(Vec<Telefono>),
-    Terminal { orden: String, salida: String },
-    Tema { nombre: String, ok: bool },
+    Terminal {
+        orden: String,
+        salida: String,
+    },
+    Tema {
+        nombre: String,
+        ok: bool,
+    },
     Fondo,
+    /// `None` si no se pudo comprobar (sin red); lista vacía si está al día.
+    Actualizaciones(Option<Vec<String>>),
     Vincular(bool),
     Sonar(bool),
 }
@@ -47,6 +55,39 @@ pub fn salida(prog: &str, args: &[&str]) -> Option<String> {
     out.status
         .success()
         .then(|| String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+// ---------------------------------------------------------------- actualizaciones
+
+/// Actualizaciones pendientes según `checkupdates` (que no toca la base de
+/// datos real): 0 = hay, 2 = ninguna, otro código = no se pudo comprobar.
+pub fn actualizaciones() -> Option<Vec<String>> {
+    let out = Command::new("checkupdates")
+        .stdin(Stdio::null())
+        .stderr(Stdio::null())
+        .output()
+        .ok()?;
+    match out.status.code()? {
+        0 | 2 => Some(parse_actualizaciones(&String::from_utf8_lossy(&out.stdout))),
+        _ => None,
+    }
+}
+
+/// Líneas `paquete antes -> después`, sin vacías.
+pub fn parse_actualizaciones(texto: &str) -> Vec<String> {
+    texto
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.split_whitespace().count() == 4 && l.contains("->"))
+        .map(str::to_string)
+        .collect()
+}
+
+/// Versión instalada de un paquete (`1.1.0-1` → `1.1.0`).
+pub fn version_instalada(paquete: &str) -> Option<String> {
+    let out = salida("pacman", &["-Q", paquete])?;
+    let v = out.split_whitespace().nth(1)?;
+    Some(v.rsplit_once('-').map_or(v, |(v, _)| v).to_string())
 }
 
 // ---------------------------------------------------------------- teléfono
@@ -284,6 +325,19 @@ pub fn marca_pendiente() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_updates_are_parsed_from_checkupdates() {
+        let t = "linux 7.2.5-1 -> 7.2.6-1\nlizarbe-ajustes 1.0.1-1 -> 1.1.0-1\n\nruido\n";
+        assert_eq!(
+            parse_actualizaciones(t),
+            vec![
+                "linux 7.2.5-1 -> 7.2.6-1",
+                "lizarbe-ajustes 1.0.1-1 -> 1.1.0-1"
+            ]
+        );
+        assert!(parse_actualizaciones("").is_empty());
+    }
 
     #[test]
     fn phones_are_read_from_kdeconnect() {

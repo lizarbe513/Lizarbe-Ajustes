@@ -17,17 +17,17 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     let y0 = r.y + h0 + 1;
     let alto = r.bottom().saturating_sub(y0).clamp(6, 14);
     let ventana = Rect::new(r.x, y0, r.width.min(90), alto);
-    marco(f, ventana, Marco::Fino, SLATE, "");
+    marco(f, ventana, Marco::Fino, pizarra(), "");
     // Barra de título de la «ventana».
     put(
         f,
         ventana.x + 2,
         ventana.y,
         vec![
-            Span::styled(" ● ", fg(RED)),
-            Span::styled("● ", fg(CADMIUM)),
-            Span::styled("● ", fg(GREEN)),
-            Span::styled(format!(" lizarbe — {} ", t("term.titulo")), bold(PHOSPHOR)),
+            Span::styled(" ● ", fg(rojo())),
+            Span::styled("● ", fg(cadmio())),
+            Span::styled("● ", fg(verde())),
+            Span::styled(format!(" lizarbe — {} ", t("term.titulo")), bold(fosforo())),
         ],
     );
     let interior = Rect::new(
@@ -36,12 +36,12 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         ventana.width - 4,
         ventana.height - 2,
     );
-    let aviso = |s: &str| Span::styled(s.to_string(), fg(SLATE));
+    let aviso = |s: &str| Span::styled(s.to_string(), fg(pizarra()));
     let prompt = || {
         vec![
-            Span::styled(format!("{} ", app.usuario.to_lowercase()), bold(GREEN)),
-            Span::styled("~ ", fg(COBALT)),
-            Span::styled("❯ ", bold(RED)),
+            Span::styled(format!("{} ", app.usuario.to_lowercase()), bold(verde())),
+            Span::styled("~ ", fg(cobalto())),
+            Span::styled("❯ ", bold(rojo())),
         ]
     };
 
@@ -53,7 +53,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     }
     for (orden, salida) in &app.historial {
         let mut l = prompt();
-        l.push(Span::styled(orden.clone(), fg(PHOSPHOR)));
+        l.push(Span::styled(orden.clone(), fg(fosforo())));
         lineas.push(l);
         for s in salida {
             let spans: Vec<Span<'static>> = s.spans.clone();
@@ -77,21 +77,21 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     // Línea de entrada.
     let y_in = interior.bottom() - 1;
     let mut linea = prompt();
-    linea.push(Span::styled(app.entrada.clone(), fg(PHOSPHOR)));
+    linea.push(Span::styled(app.entrada.clone(), fg(fosforo())));
     let cursor_on = ((tt * 2.0) as u32).is_multiple_of(2);
-    linea.push(Span::styled(if cursor_on { "█" } else { " " }, fg(RED)));
+    linea.push(Span::styled(if cursor_on { "█" } else { " " }, fg(rojo())));
     if app.term_ocupado {
         let giro = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][(tt * 12.0) as usize % 10];
         linea.push(Span::styled(
             format!("  {giro} {}", t("term.ejecutando")),
-            fg(CADMIUM),
+            fg(cadmio()),
         ));
     } else {
         let sug = app.sugerencia();
         let resto: String = sug.chars().skip(app.entrada.chars().count()).collect();
         if !resto.is_empty() {
-            linea.push(Span::styled(resto, fg(SLATE)));
-            linea.push(Span::styled("   [Tab]", fg(STEEL)));
+            linea.push(Span::styled(resto, fg(pizarra())));
+            linea.push(Span::styled("   [Tab]", fg(acero())));
         }
     }
     put(

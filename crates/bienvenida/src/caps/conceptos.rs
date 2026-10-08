@@ -30,14 +30,14 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             r.x,
             y,
             vec![
-                Span::styled(if sel { "▍ " } else { "  " }, bold(RED)),
-                Span::styled(format!("{}  ", i + 1), fg(SLATE)),
+                Span::styled(if sel { "▍ " } else { "  " }, bold(rojo())),
+                Span::styled(format!("{}  ", i + 1), fg(pizarra())),
                 Span::styled(
                     truncate(
                         &t(&format!("con.{}", c.id)),
                         lista_w.saturating_sub(7) as usize,
                     ),
-                    if sel { bold(PHOSPHOR) } else { fg(SILVER) },
+                    if sel { bold(fosforo()) } else { fg(plata()) },
                 ),
             ],
         );
@@ -55,11 +55,11 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         x,
         y0,
         &t(&format!("con.{}", c.id)).to_uppercase(),
-        bold(PHOSPHOR),
+        bold(fosforo()),
     );
     let mut y = y0 + 2;
-    y += parrafo(f, x, y, w, &t(&format!("con.{}.1", c.id)), fg(SILVER)) + 1;
-    y += parrafo(f, x, y, w, &t(&format!("con.{}.2", c.id)), fg(SLATE)) + 1;
+    y += parrafo(f, x, y, w, &t(&format!("con.{}.1", c.id)), fg(plata())) + 1;
+    y += parrafo(f, x, y, w, &t(&format!("con.{}.2", c.id)), fg(pizarra())) + 1;
     let alto = r.bottom().saturating_sub(y);
     if alto >= 7 {
         dibujo(f, c.dibujo, Rect::new(x, y, w.min(64), alto.min(10)), tt);
@@ -68,7 +68,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
 
 fn etiqueta(f: &mut Frame, r: Rect, texto_: &str, color: Color, relleno: bool) {
     marco(f, r, Marco::Fino, color, "");
-    let st = if relleno { bold(color) } else { fg(SILVER) };
+    let st = if relleno { bold(color) } else { fg(plata()) };
     texto(
         f,
         r.x + 1,
@@ -93,7 +93,7 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                     f,
                     caja,
                     if on { Marco::Grueso } else { Marco::Fino },
-                    if on { RED } else { SLATE },
+                    if on { rojo() } else { pizarra() },
                     "",
                 );
                 texto(
@@ -101,7 +101,7 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                     x + 3,
                     r.y + 1,
                     &(i + 1).to_string(),
-                    if on { bold(PHOSPHOR) } else { fg(SLATE) },
+                    if on { bold(fosforo()) } else { fg(pizarra()) },
                 );
                 if i % 2 == 0 {
                     texto(
@@ -109,7 +109,7 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                         x + 2,
                         r.y + 2,
                         "▪▪",
-                        fg(if on { PHOSPHOR } else { STEEL }),
+                        fg(if on { fosforo() } else { acero() }),
                     );
                 }
             }
@@ -118,31 +118,31 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                 r.x,
                 r.y + 5,
                 &format!("{}  {}", crate::brand::SPARK, "Super + 1 … 5"),
-                fg(CADMIUM),
+                fg(cadmio()),
             );
         }
         Dibujo::Mosaico => {
             let etapa = (tt / 1.8) as usize % 3;
             let (w, h) = (r.width.min(48), r.height.min(8));
             let area = Rect::new(r.x, r.y, w, h);
-            marco(f, area, Marco::Fino, STEEL, "");
+            marco(f, area, Marco::Fino, acero(), "");
             let i = Rect::new(area.x + 1, area.y + 1, area.width - 2, area.height - 2);
             match etapa {
-                0 => etiqueta(f, i, "Terminal", RED, true),
+                0 => etiqueta(f, i, "Terminal", rojo(), true),
                 1 => {
                     let mitad = i.width / 2;
                     etiqueta(
                         f,
                         Rect::new(i.x, i.y, mitad, i.height),
                         "Terminal",
-                        SLATE,
+                        pizarra(),
                         false,
                     );
                     etiqueta(
                         f,
                         Rect::new(i.x + mitad, i.y, i.width - mitad, i.height),
                         "Navegador",
-                        RED,
+                        rojo(),
                         true,
                     );
                 }
@@ -153,21 +153,21 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                         f,
                         Rect::new(i.x, i.y, mitad, i.height),
                         "Terminal",
-                        SLATE,
+                        pizarra(),
                         false,
                     );
                     etiqueta(
                         f,
                         Rect::new(i.x + mitad, i.y, i.width - mitad, alto),
                         "Navegador",
-                        SLATE,
+                        pizarra(),
                         false,
                     );
                     etiqueta(
                         f,
                         Rect::new(i.x + mitad, i.y + alto, i.width - mitad, i.height - alto),
                         "Archivos",
-                        RED,
+                        rojo(),
                         true,
                     );
                 }
@@ -187,12 +187,15 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                     r.x + col as u16 * 18,
                     r.y + fila as u16,
                     vec![
-                        Span::styled(if on { "▍ " } else { "  " }, bold(RED)),
-                        Span::styled(it.to_string(), if on { bold(PHOSPHOR) } else { fg(SILVER) }),
+                        Span::styled(if on { "▍ " } else { "  " }, bold(rojo())),
+                        Span::styled(
+                            it.to_string(),
+                            if on { bold(fosforo()) } else { fg(plata()) },
+                        ),
                     ],
                 );
             }
-            texto(f, r.x, r.y + 6, "Super + Espacio", bold(CADMIUM));
+            texto(f, r.x, r.y + 6, "Super + Espacio", bold(cadmio()));
         }
         Dibujo::Instalar => {
             let items = ["Tienda", "Package", "AUR", "Web App"];
@@ -206,11 +209,11 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                     f,
                     caja,
                     it,
-                    if i == activo { RED } else { SLATE },
+                    if i == activo { rojo() } else { pizarra() },
                     i == activo,
                 );
             }
-            texto(f, r.x, r.y + 4, "Super + Espacio › Install", bold(CADMIUM));
+            texto(f, r.x, r.y + 4, "Super + Espacio › Install", bold(cadmio()));
         }
         Dibujo::Actualizar => {
             let ciclo = (tt % 8.0) / 8.0;
@@ -221,17 +224,17 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
             } else {
                 "update.f3"
             };
-            texto(f, r.x, r.y, &t(fase), bold(PHOSPHOR));
+            texto(f, r.x, r.y, &t(fase), bold(fosforo()));
             put(
                 f,
                 r.x,
                 r.y + 2,
                 vec![
-                    Span::styled(anim::barra(ciclo, 36), fg(RED)),
-                    Span::styled(format!("  {:>3}%", (ciclo * 100.0) as u32), fg(SILVER)),
+                    Span::styled(anim::barra(ciclo, 36), fg(rojo())),
+                    Span::styled(format!("  {:>3}%", (ciclo * 100.0) as u32), fg(plata())),
                 ],
             );
-            texto(f, r.x, r.y + 4, "omarchy update", bold(CADMIUM));
+            texto(f, r.x, r.y + 4, "omarchy update", bold(cadmio()));
         }
         Dibujo::Privacidad => {
             let parpadeo = anim::pulso(tt, 2.0) > 0.5;
@@ -240,8 +243,8 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                 r.x,
                 r.y,
                 vec![
-                    Span::styled(format!("{} ", t("priv.telemetria")), fg(SILVER)),
-                    Span::styled("0 B", bold(GREEN)),
+                    Span::styled(format!("{} ", t("priv.telemetria")), fg(plata())),
+                    Span::styled("0 B", bold(verde())),
                 ],
             );
             put(
@@ -249,8 +252,8 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                 r.x,
                 r.y + 1,
                 vec![
-                    Span::styled(format!("{} ", t("priv.rastreadores")), fg(SILVER)),
-                    Span::styled("0", bold(GREEN)),
+                    Span::styled(format!("{} ", t("priv.rastreadores")), fg(plata())),
+                    Span::styled("0", bold(verde())),
                 ],
             );
             put(
@@ -258,8 +261,8 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                 r.x,
                 r.y + 2,
                 vec![
-                    Span::styled(format!("{} ", t("priv.antivirus")), fg(SILVER)),
-                    Span::styled(t("priv.no_hace_falta"), bold(GREEN)),
+                    Span::styled(format!("{} ", t("priv.antivirus")), fg(plata())),
+                    Span::styled(t("priv.no_hace_falta"), bold(verde())),
                 ],
             );
             texto(
@@ -271,7 +274,7 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                 } else {
                     "▯ listening: nothing"
                 },
-                fg(SLATE),
+                fg(pizarra()),
             );
         }
         Dibujo::Modular => {
@@ -286,7 +289,7 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                     f,
                     caja,
                     p,
-                    if i == activo { RED } else { SLATE },
+                    if i == activo { rojo() } else { pizarra() },
                     i == activo,
                 );
             }
@@ -295,7 +298,7 @@ fn dibujo(f: &mut Frame, d: Dibujo, r: Rect, tt: f32) {
                 r.x,
                 r.y + 4,
                 &format!("{SPARK} {}", t("modular.cambiable")),
-                fg(CADMIUM),
+                fg(cadmio()),
             );
         }
     }

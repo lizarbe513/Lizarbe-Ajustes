@@ -10,11 +10,13 @@ use lizarbe_core::ansi;
 use lizarbe_core::hypr_events::{HyprEvent, Listener};
 use lizarbe_core::mouse::{self, Clicks, Mouse};
 use lizarbe_core::term::{Command, TuiApp};
+use lizarbe_core::theme::{Palette, PaletteWatcher};
 use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use ratatui::layout::Rect;
 use ratatui::text::Line;
 
+use crate::brand;
 use crate::contenido::{CONCEPTOS, HERRAMIENTAS, LOGROS, TIENDAS, total_atajos};
 use crate::i18n::{t, tf};
 use crate::retos::{Estado as EstadoReto, Reto};
@@ -23,6 +25,7 @@ use crate::sistema::{self, Estado, Msg, Orden, Telefono};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cap {
     Arranque,
+    Actualizar,
     Super,
     Practica,
     Terminal,
@@ -35,8 +38,9 @@ pub enum Cap {
 }
 
 impl Cap {
-    pub const ALL: [Cap; 10] = [
+    pub const ALL: [Cap; 11] = [
         Cap::Arranque,
+        Cap::Actualizar,
         Cap::Super,
         Cap::Practica,
         Cap::Terminal,
@@ -48,17 +52,22 @@ impl Cap {
         Cap::Final,
     ];
 
-    /// Capítulos numerados del 1 al 8 (el arranque y el final no cuentan).
+    /// Pasos numerados del 1 al 8 (ni el arranque, ni «Actualizar», ni el final cuentan).
     pub const NUMERADOS: usize = 8;
 
     pub fn indice(self) -> usize {
         Cap::ALL.iter().position(|c| *c == self).unwrap()
     }
 
-    /// Número de capítulo (1-8), si lo tiene.
+    /// Número de paso (1-8), si lo tiene.
     pub fn numero(self) -> Option<usize> {
         let i = self.indice();
-        (1..=Cap::NUMERADOS).contains(&i).then_some(i)
+        (2..=Cap::NUMERADOS + 1).contains(&i).then(|| i - 1)
+    }
+
+    /// Posición en `ALL` del paso numerado `n` (1-8).
+    pub fn de_numero(n: usize) -> usize {
+        n + 1
     }
 }
 
@@ -72,6 +81,24 @@ pub enum Hit {
     /// Botón de acción del capítulo (la tecla que lo activa).
     Boton(char),
     Qr(usize),
+}
+
+/// Estado de la búsqueda de actualizaciones del sistema.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Act {
+    Buscando,
+    AlDia,
+    /// Líneas `paquete antes -> después`.
+    Hay(Vec<String>),
+    SinRed,
+    Actualizado,
+}
+
+/// Comando externo en marcha (para saber qué hacer al volver).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tarea {
+    Puertos,
+    Actualizar,
 }
 
 /// La frase que dice qué hacer en el paso actual.
@@ -137,6 +164,12 @@ pub struct App {
     pub hover: Option<Hit>,
     clicks: Clicks<Hit>,
     comando: Option<Command>,
+    en_curso: Option<Tarea>,
+    pub act: Act,
+    /// Tras actualizar hay una versión nueva de la Bienvenida: reabrirla en este paso.
+    pub relanzar: Option<usize>,
+    paleta: Palette,
+    vigia: Option<PaletteWatcher>,
 }
 
 impl App {
@@ -202,7 +235,19 @@ impl App {
             hover: None,
             clicks: Clicks::default(),
             comando: None,
+            en_curso: None,
+            act: Act::Buscando,
+            relanzar: None,
+            paleta: Palette::default(),
+            vigia: None,
         };
+        if !demo {
+            let colores = lizarbe_core::paths::current_theme().join("colors.toml");
+            app.paleta = Palette::load(&colores);
+            brand::aplicar_paleta(&app.paleta);
+            app.vigia = Some(PaletteWatcher::new(&colores));
+        }
+        app.buscar_actualizaciones();
         app.ir(capitulo.min(Cap::ALL.len() - 1));
         app
     }
@@ -219,6 +264,51 @@ impl App {
     /// ¿Hay sesión de Hyprland a la que escuchar?
     pub fn en_vivo(&self) -> bool {
         self.escuchador.is_some()
+    }
+
+    // ------------------------------------------------------------ actualizar
+
+    fn buscar_actualizaciones(&mut self) {
+        if self.demo {
+            self.act = Act::Hay(vec![
+                "lizarbe-ajustes 1.0.1 -> 1.1.0".into(),
+                "linux 7.2.5 -> 7.2.6".into(),
+            ]);
+            return;
+        }
+        self.act = Act::Buscando;
+        sistema::en_segundo_plano(
+            &self.tx,
+            || Msg::Actualizaciones(sistema::actualizaciones()),
+        );
+    }
+
+    fn actualizar(&mut self) {
+        if !matches!(self.act, Act::Hay(_)) {
+            return;
+        }
+        if self.demo {
+            self.act = Act::Actualizado;
+            return;
+        }
+        self.en_curso = Some(Tarea::Actualizar);
+        self.comando = Some(Command {
+            program: "omarchy-update".into(),
+            args: vec!["-y".into()],
+        });
+    }
+
+    /// Termina una actualización: si trajo una Bienvenida nueva, se reabre.
+    fn actualizacion_terminada(&mut self, ok: bool, instalada: Option<String>) {
+        if !ok {
+            self.buscar_actualizaciones();
+            return;
+        }
+        self.act = Act::Actualizado;
+        if instalada.is_some_and(|v| v != env!("CARGO_PKG_VERSION")) {
+            self.relanzar = Some(Cap::Super.indice());
+            self.quit = true;
+        }
     }
 
     // ------------------------------------------------------------ guía
@@ -246,6 +336,13 @@ impl App {
                         .collect();
                     (tf(clave, &[("reto", &reto)]), false)
                 }
+            },
+            Cap::Actualizar => match self.act {
+                Act::Buscando => (t("guia.actualizar.buscando"), false),
+                Act::Hay(_) => (t("guia.actualizar"), false),
+                Act::AlDia => (t("guia.actualizar.aldia"), true),
+                Act::SinRed => (t("guia.actualizar.sinred"), false),
+                Act::Actualizado => (t("guia.actualizar.hecho"), true),
             },
             Cap::Terminal if self.tiene("fastfetch") => (t("guia.terminal.hecho"), true),
             Cap::Terminal => (t("guia.terminal"), false),
@@ -287,6 +384,7 @@ impl App {
         match self.capitulo() {
             Cap::Terminal if !self.entrada.is_empty() => t("nav.ejecutar"),
             Cap::Terminal if !self.tiene("fastfetch") => t("nav.probar"),
+            Cap::Actualizar if matches!(self.act, Act::Hay(_)) => t("nav.omitir"),
             _ => t("nav.continuar"),
         }
     }
@@ -297,6 +395,9 @@ impl App {
             Cap::Practica if self.reto_actual().is_none() => None,
             Cap::Practica if self.en_vivo() && !self.demo => Some(("S", t("acc.saltar"), 's')),
             Cap::Practica => Some(("Espacio", t("acc.hecho"), ' ')),
+            Cap::Actualizar if matches!(self.act, Act::Hay(_)) => {
+                Some(("Espacio", t("btn.actualizar"), ' '))
+            }
             Cap::Telefono if self.telefono_elegido().is_some() => {
                 Some(("Espacio", t("btn.vincular"), ' '))
             }
@@ -549,6 +650,7 @@ impl App {
         if self.demo || self.cortafuegos {
             return;
         }
+        self.en_curso = Some(Tarea::Puertos);
         self.comando = Some(Command {
             program: "bash".into(),
             args: vec![
@@ -691,6 +793,10 @@ impl App {
     /// Acción principal del capítulo con Enter. Devuelve `false` si el capítulo no tiene y hay que avanzar.
     fn accion_principal(&mut self) -> bool {
         match self.capitulo() {
+            Cap::Actualizar => {
+                self.actualizar();
+                true
+            }
             Cap::Telefono => {
                 self.vincular();
                 true
@@ -738,7 +844,7 @@ impl App {
         match key.code {
             KeyCode::Right | KeyCode::Char('l') => self.siguiente(),
             KeyCode::Left | KeyCode::Char('h') => self.anterior(),
-            KeyCode::Char(c @ '1'..='8') => self.ir(c as usize - '0' as usize),
+            KeyCode::Char(c @ '1'..='8') => self.ir(Cap::de_numero(c as usize - '0' as usize)),
             KeyCode::Char('0') => self.ir(0),
             KeyCode::Char('?') => self.modal = Modal::Ayuda,
             KeyCode::Char('q') | KeyCode::Esc => self.modal = Modal::Salir,
@@ -869,7 +975,7 @@ impl App {
             return;
         }
         match h {
-            Hit::Cap(i) => self.ir(i),
+            Hit::Cap(i) => self.ir(Cap::de_numero(i)),
             Hit::Anterior => self.anterior(),
             Hit::Siguiente => self.siguiente(),
             Hit::Fila(i) => {
@@ -900,6 +1006,11 @@ impl App {
 
     pub fn tick(&mut self) {
         self.t = self.t0.elapsed().as_secs_f32();
+        if let Some(v) = &mut self.vigia
+            && v.poll(&mut self.paleta)
+        {
+            brand::aplicar_paleta(&self.paleta);
+        }
         if let Some(l) = &self.escuchador {
             for ev in l.drain() {
                 self.evento(&ev);
@@ -941,6 +1052,16 @@ impl App {
                 }
             }
             Msg::Fondo => self.tema_ocupado = false,
+            Msg::Actualizaciones(lista) => {
+                // Si ya se actualizó en esta sesión, el aviso no vuelve a ofrecerlo.
+                if self.act != Act::Actualizado {
+                    self.act = match lista {
+                        None => Act::SinRed,
+                        Some(v) if v.is_empty() => Act::AlDia,
+                        Some(v) => Act::Hay(v),
+                    };
+                }
+            }
             Msg::Vincular(ok) => {
                 self.tel_aviso = if ok {
                     t("tel.aceptar_en_telefono")
@@ -981,8 +1102,14 @@ impl TuiApp for App {
         self.comando.take()
     }
 
-    fn after_command(&mut self, _result: Result<bool, String>) {
-        self.cortafuegos = sistema::cortafuegos_ok();
+    fn after_command(&mut self, result: Result<bool, String>) {
+        match self.en_curso.take() {
+            Some(Tarea::Actualizar) => self.actualizacion_terminada(
+                result == Ok(true),
+                sistema::version_instalada("lizarbe-ajustes"),
+            ),
+            _ => self.cortafuegos = sistema::cortafuegos_ok(),
+        }
     }
 
     fn should_quit(&self) -> bool {
@@ -1030,6 +1157,8 @@ mod tests {
         let mut a = demo();
         a.t = 10.0;
         a.on_key(tecla(KeyCode::Right));
+        assert_eq!(a.capitulo(), Cap::Actualizar);
+        a.on_key(tecla(KeyCode::Right));
         assert_eq!(a.capitulo(), Cap::Super);
         a.on_key(tecla(KeyCode::Char('5')));
         assert_eq!(a.capitulo(), Cap::Escritorio);
@@ -1052,13 +1181,13 @@ mod tests {
         assert_eq!(a.capitulo(), Cap::Arranque);
         assert!(a.cap_t() >= crate::caps::arranque::LISTO);
         a.on_key(tecla(KeyCode::Enter));
-        assert_eq!(a.capitulo(), Cap::Super);
+        assert_eq!(a.capitulo(), Cap::Actualizar);
     }
 
     #[test]
     fn live_challenges_complete_in_order_and_grant_achievements() {
         let mut a = demo();
-        a.ir(2);
+        a.ir(3);
         assert_eq!(a.reto_actual(), Some(0));
         // Un evento que no toca no cuenta.
         a.evento(&ev("workspace", "2"));
@@ -1081,7 +1210,7 @@ mod tests {
     #[test]
     fn skipping_and_simulating_challenges() {
         let mut a = demo();
-        a.ir(2);
+        a.ir(3);
         a.on_key(tecla(KeyCode::Char('s')));
         assert_eq!(a.retos[0], EstadoReto::Saltado);
         assert!(!a.tiene("menu"));
@@ -1103,7 +1232,7 @@ mod tests {
     #[test]
     fn toy_terminal_types_runs_and_scores_fastfetch() {
         let mut a = demo();
-        a.ir(3);
+        a.ir(4);
         assert_eq!(a.sugerencia(), "fastfetch");
         a.on_key(tecla(KeyCode::Tab));
         assert_eq!(a.entrada, "fastfetch");
@@ -1129,7 +1258,7 @@ mod tests {
     fn enter_always_continues_except_where_it_has_a_job() {
         let mut a = demo();
         // Terminal: antes de probar, Enter con la línea vacía ejecuta la sugerencia…
-        a.ir(3);
+        a.ir(4);
         assert_eq!(a.etiqueta_enter(), t("nav.probar"));
         a.on_key(tecla(KeyCode::Enter));
         assert!(a.tiene("fastfetch"));
@@ -1139,7 +1268,7 @@ mod tests {
         a.on_key(tecla(KeyCode::Enter));
         assert_eq!(a.capitulo(), Cap::Telefono);
         // En el resto de pasos, Enter solo continúa y Espacio hace lo propio del paso.
-        a.ir(5);
+        a.ir(6);
         a.on_key(tecla(KeyCode::Enter));
         assert_eq!(a.capitulo(), Cap::Configurar);
         assert!(a.tema_aplicado.is_none() && !a.tiene("ajustes"));
@@ -1149,9 +1278,58 @@ mod tests {
     }
 
     #[test]
+    fn update_step_offers_updating_and_can_be_skipped() {
+        let mut a = demo();
+        a.ir(Cap::Actualizar.indice());
+        assert!(matches!(a.act, Act::Hay(_)));
+        assert_eq!(a.etiqueta_enter(), t("nav.omitir"));
+        assert_eq!(a.accion_secundaria().unwrap().2, ' ');
+        // Enter omite sin actualizar.
+        a.on_key(tecla(KeyCode::Enter));
+        assert_eq!(a.capitulo(), Cap::Super);
+        assert!(matches!(a.act, Act::Hay(_)));
+        // Espacio actualiza (en demostración no toca el sistema).
+        a.ir(Cap::Actualizar.indice());
+        a.on_key(tecla(KeyCode::Char(' ')));
+        assert_eq!(a.act, Act::Actualizado);
+        assert!(a.guia().hecho);
+        assert_eq!(a.etiqueta_enter(), t("nav.continuar"));
+        assert!(a.accion_secundaria().is_none());
+    }
+
+    #[test]
+    fn search_results_become_states() {
+        let mut a = demo();
+        a.recibir(Msg::Actualizaciones(None));
+        assert_eq!(a.act, Act::SinRed);
+        a.recibir(Msg::Actualizaciones(Some(vec![])));
+        assert_eq!(a.act, Act::AlDia);
+        a.recibir(Msg::Actualizaciones(Some(vec!["x 1 -> 2".into()])));
+        assert!(matches!(a.act, Act::Hay(_)));
+    }
+
+    #[test]
+    fn a_new_version_after_updating_reopens_the_welcome() {
+        let mut a = demo();
+        a.ir(Cap::Actualizar.indice());
+        // Misma versión: sigue la guía.
+        a.actualizacion_terminada(true, Some(env!("CARGO_PKG_VERSION").into()));
+        assert_eq!(a.act, Act::Actualizado);
+        assert!(a.relanzar.is_none() && !a.quit);
+        // Versión distinta: se reabre en el primer paso numerado.
+        a.actualizacion_terminada(true, Some("99.0.0".into()));
+        assert_eq!(a.relanzar, Some(Cap::Super.indice()));
+        assert!(a.quit);
+        // Si falló, no se reabre y se vuelve a buscar.
+        let mut b = demo();
+        b.actualizacion_terminada(false, Some("99.0.0".into()));
+        assert!(b.relanzar.is_none() && !b.quit);
+    }
+
+    #[test]
     fn the_guide_tells_what_to_do_and_flips_when_done() {
         let mut a = demo();
-        a.ir(3);
+        a.ir(4);
         let g = a.guia();
         assert!(!g.hecho && g.texto.contains("fastfetch"));
         a.on_key(tecla(KeyCode::Enter));
@@ -1159,7 +1337,7 @@ mod tests {
         assert!(g.hecho && g.texto.contains("Enter"));
         // Cada paso numerado tiene una frase que dice qué hacer.
         for i in 1..=Cap::NUMERADOS {
-            a.ir(i);
+            a.ir(Cap::de_numero(i));
             assert!(!a.guia().texto.is_empty(), "paso {i}");
         }
     }
@@ -1167,7 +1345,7 @@ mod tests {
     #[test]
     fn dangerous_commands_are_refused_in_the_toy_terminal() {
         let mut a = demo();
-        a.ir(3);
+        a.ir(4);
         a.entrada = "rm -rf /".into();
         a.on_key(tecla(KeyCode::Enter));
         let (orden, salida) = a.historial.last().unwrap();
@@ -1178,7 +1356,7 @@ mod tests {
     #[test]
     fn phone_pairing_flow_in_demo() {
         let mut a = demo();
-        a.ir(4);
+        a.ir(5);
         assert_eq!(a.telefonos.len(), 1);
         assert!(!a.tiene("telefono"));
         a.on_key(tecla(KeyCode::Char('p')));
@@ -1191,7 +1369,7 @@ mod tests {
     #[test]
     fn real_phone_list_updates_and_keeps_selection() {
         let mut a = demo();
-        a.ir(4);
+        a.ir(5);
         let tel = |id: &str, est| Telefono {
             id: id.into(),
             nombre: id.into(),
@@ -1214,7 +1392,7 @@ mod tests {
     #[test]
     fn theme_chapter_applies_and_restores_in_demo() {
         let mut a = demo();
-        a.ir(5);
+        a.ir(6);
         assert_eq!(a.temas[0], "Lizarbe");
         a.on_key(tecla(KeyCode::Down));
         a.on_key(tecla(KeyCode::Char(' ')));
@@ -1227,7 +1405,7 @@ mod tests {
     #[test]
     fn tools_open_and_grant_the_settings_achievement() {
         let mut a = demo();
-        a.ir(6);
+        a.ir(7);
         a.on_key(tecla(KeyCode::Down));
         a.on_key(tecla(KeyCode::Char(' ')));
         assert!(a.tiene("ajustes"));
@@ -1242,7 +1420,7 @@ mod tests {
     fn quitting_asks_and_remembers_the_choice() {
         let mut a = demo();
         a.t = 10.0;
-        a.ir(1);
+        a.ir(2);
         a.on_key(tecla(KeyCode::Char('q')));
         assert_eq!(a.modal, Modal::Salir);
         a.on_key(tecla(KeyCode::Esc));
@@ -1260,7 +1438,7 @@ mod tests {
     #[test]
     fn finishing_from_the_last_screen_does_not_ask_again() {
         let mut a = demo();
-        a.ir(9);
+        a.ir(10);
         a.on_key(tecla(KeyCode::Enter));
         assert!(a.quit && !a.volver_a_mostrar);
     }

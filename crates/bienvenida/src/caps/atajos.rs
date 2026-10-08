@@ -47,7 +47,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                     r.x,
                     y,
                     &format!("{SPARK} {}", t(clave).to_uppercase()),
-                    bold(RED),
+                    bold(rojo()),
                 );
             }
             Fila::Atajo(g, k) => {
@@ -63,8 +63,8 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                     r.x + col_teclas + 4,
                     y,
                     vec![
-                        Span::styled(if es_sel { "▍ " } else { "  " }, bold(RED)),
-                        Span::styled(desc, if es_sel { bold(PHOSPHOR) } else { fg(SILVER) }),
+                        Span::styled(if es_sel { "▍ " } else { "  " }, bold(rojo())),
+                        Span::styled(desc, if es_sel { bold(fosforo()) } else { fg(plata()) }),
                     ],
                 );
             }
@@ -83,7 +83,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 ("total", &total_atajos().to_string()),
             ],
         ),
-        fg(SLATE),
+        fg(pizarra()),
     );
     let k = combo(&["Super", "K"], false, "+");
     let kw = ancho_spans(&k);
@@ -92,5 +92,5 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         .right()
         .saturating_sub(kw + 3 + aviso.chars().count() as u16);
     put(f, ax, yp, k);
-    texto(f, ax + kw + 2, yp, &aviso, fg(CADMIUM));
+    texto(f, ax + kw + 2, yp, &aviso, fg(cadmio()));
 }

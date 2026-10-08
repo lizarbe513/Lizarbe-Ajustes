@@ -29,10 +29,10 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             r.x,
             y,
             vec![
-                Span::styled(if sel { "▍ " } else { "  " }, bold(RED)),
+                Span::styled(if sel { "▍ " } else { "  " }, bold(rojo())),
                 Span::styled(
                     format!("{}  ", h.icono),
-                    if sel { bold(RED) } else { fg(SLATE) },
+                    if sel { bold(rojo()) } else { fg(pizarra()) },
                 ),
                 Span::styled(
                     truncate(
@@ -40,11 +40,11 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                         lista_w.saturating_sub(7) as usize,
                     ),
                     if sel {
-                        bold(PHOSPHOR)
+                        bold(fosforo())
                     } else if abierta {
-                        bold(CADMIUM)
+                        bold(cadmio())
                     } else {
-                        fg(SILVER)
+                        fg(plata())
                     },
                 ),
             ],
@@ -61,7 +61,13 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     }
     let alto = r.bottom().saturating_sub(y0).min(10);
     let caja = Rect::new(fx, y0, fw, alto);
-    marco(f, caja, Marco::Grueso, STEEL, &t(&format!("herr.{}", h.id)));
+    marco(
+        f,
+        caja,
+        Marco::Grueso,
+        acero(),
+        &t(&format!("herr.{}", h.id)),
+    );
     let mut y = caja.y + 2;
     y += parrafo(
         f,
@@ -69,15 +75,15 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         y,
         caja.width - 6,
         &t(&format!("herr.{}.d", h.id)),
-        fg(PHOSPHOR),
+        fg(fosforo()),
     ) + 1;
     put(
         f,
         caja.x + 3,
         y,
         vec![
-            Span::styled(format!("{}  ", t("herr.donde")), fg(SLATE)),
-            Span::styled(t(&format!("herr.{}.ruta", h.id)), fg(SILVER)),
+            Span::styled(format!("{}  ", t("herr.donde")), fg(pizarra())),
+            Span::styled(t(&format!("herr.{}.ruta", h.id)), fg(plata())),
         ],
     );
 }

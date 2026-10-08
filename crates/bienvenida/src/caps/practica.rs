@@ -30,13 +30,13 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         let estado = app.retos[i];
         let es_actual = actual == Some(i);
         let (marca, color) = match estado {
-            Estado::Hecho => (SPARK, GREEN),
-            Estado::Saltado => ("·", SLATE),
-            Estado::Pendiente if es_actual => ("▶", RED),
-            Estado::Pendiente => ("○", STEEL),
+            Estado::Hecho => (SPARK, verde()),
+            Estado::Saltado => ("·", pizarra()),
+            Estado::Pendiente if es_actual => ("▶", rojo()),
+            Estado::Pendiente => ("○", acero()),
         };
         let color = if es_actual {
-            blend(RED, PHOSPHOR, anim::pulso(tt, 1.2) * 0.5)
+            blend(rojo(), fosforo(), anim::pulso(tt, 1.2) * 0.5)
         } else {
             color
         };
@@ -51,9 +51,9 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 t(&format!("reto.{}", reto.id()))
             ),
             match estado {
-                Estado::Hecho | Estado::Saltado => fg(SLATE),
-                Estado::Pendiente if es_actual => bold(PHOSPHOR),
-                Estado::Pendiente => fg(SILVER),
+                Estado::Hecho | Estado::Saltado => fg(pizarra()),
+                Estado::Pendiente if es_actual => bold(fosforo()),
+                Estado::Pendiente => fg(plata()),
             },
         ));
         put(f, r.x, y, spans);
@@ -63,7 +63,14 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 "practica.pista",
                 &[("pista", &t(&format!("reto.{}.pista", reto.id())))],
             );
-            y += parrafo(f, r.x + 2, y, ancho.saturating_sub(2), &pista, fg(SLATE));
+            y += parrafo(
+                f,
+                r.x + 2,
+                y,
+                ancho.saturating_sub(2),
+                &pista,
+                fg(pizarra()),
+            );
         }
         y += 1;
     }
@@ -73,10 +80,10 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     let vivo = if app.en_vivo() {
         Span::styled(
             format!("● {}  ", t("practica.en_vivo")),
-            bold(blend(RED, PHOSPHOR, anim::pulso(tt, 1.0) * 0.6)),
+            bold(blend(rojo(), fosforo(), anim::pulso(tt, 1.0) * 0.6)),
         )
     } else {
-        Span::styled(format!("○ {}  ", t("practica.demo")), fg(SLATE))
+        Span::styled(format!("○ {}  ", t("practica.demo")), fg(pizarra()))
     };
     let ultimo = match app.ultimos.last() {
         Some((_, texto_ev)) => truncate(texto_ev, ancho.saturating_sub(20) as usize),
@@ -86,5 +93,5 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             ".".repeat((tt * 2.0) as usize % 4)
         ),
     };
-    put(f, r.x, y, vec![vivo, Span::styled(ultimo, fg(SILVER))]);
+    put(f, r.x, y, vec![vivo, Span::styled(ultimo, fg(plata()))]);
 }

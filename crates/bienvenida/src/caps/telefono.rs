@@ -22,7 +22,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     // Columna del QR: la página de descargas siempre; los códigos largos solo si caben.
     let alto_disponible = r.bottom().saturating_sub(y0 + 2);
     let (_, url) = TIENDAS[app.qr_sel.min(TIENDAS.len() - 1)];
-    let lineas = qr::lineas(url, INK, PHOSPHOR);
+    let lineas = qr::lineas(url, QR_OSCURO, QR_CLARO);
     let cabe = lineas.len() as u16 + 3 <= alto_disponible;
     let qr_w = if cabe { qr::ancho(url) as u16 } else { 0 };
     let col_qr = if cabe { qr_w.max(36) } else { 36 };
@@ -37,27 +37,27 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         for (i, (clave, _)) in TIENDAS.iter().enumerate() {
             let etiqueta = format!(" {} ", t(clave));
             let st = if i == app.qr_sel {
-                bold(PHOSPHOR)
+                bold(fosforo())
             } else if app.hover == Some(Hit::Qr(i)) {
-                bold(CADMIUM)
+                bold(cadmio())
             } else {
-                fg(SLATE)
+                fg(pizarra())
             };
             let w = texto(f, xs, ys, &etiqueta, st);
             app.hits.push((Rect::new(xs, ys, w, 1), Hit::Qr(i)));
             xs += w + 1;
         }
-        texto(f, r.x, ys + 1, &truncate(url, col_qr as usize), fg(STEEL));
+        texto(f, r.x, ys + 1, &truncate(url, col_qr as usize), fg(acero()));
     } else {
         let caja = Rect::new(r.x, y0, col_qr, 8);
-        marco(f, caja, Marco::Fino, STEEL, "");
+        marco(f, caja, Marco::Fino, acero(), "");
         parrafo(
             f,
             caja.x + 2,
             caja.y + 2,
             caja.width - 4,
             &t("tel.ampliar"),
-            fg(SLATE),
+            fg(pizarra()),
         );
     }
 
@@ -74,8 +74,8 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             x,
             y,
             vec![
-                Span::styled(format!("{n}  "), bold(RED)),
-                Span::styled(t(&format!("tel.paso{n}")), fg(PHOSPHOR)),
+                Span::styled(format!("{n}  "), bold(rojo())),
+                Span::styled(t(&format!("tel.paso{n}")), fg(fosforo())),
             ],
         );
         y += 2;
@@ -85,7 +85,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     // Teléfonos cercanos.
     let alto_caja = r.bottom().saturating_sub(y + 2).clamp(4, 7);
     let caja = Rect::new(x, y, w, alto_caja);
-    marco(f, caja, Marco::Fino, STEEL, &t("tel.cercanos"));
+    marco(f, caja, Marco::Fino, acero(), &t("tel.cercanos"));
     if app.telefonos.is_empty() {
         let giro = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"][(tt * 10.0) as usize % 10];
         texto(
@@ -93,7 +93,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             caja.x + 2,
             caja.y + 1,
             &format!("{giro} {}", t("tel.buscando")),
-            fg(SLATE),
+            fg(pizarra()),
         );
     }
     let n_max = alto_caja.saturating_sub(2) as usize;
@@ -101,10 +101,10 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     for (i, p) in telefonos.iter().take(n_max).enumerate() {
         let sel = i == app.tel_sel;
         let (marca, color) = match (&p.estado, p.alcanzable) {
-            (Estado::Vinculado, true) => (SPARK, GREEN),
-            (Estado::Vinculado, false) => ("○", SLATE),
-            (Estado::Solicitado, _) => ("◌", CADMIUM),
-            (Estado::Nuevo, _) => ("●", COBALT),
+            (Estado::Vinculado, true) => (SPARK, verde()),
+            (Estado::Vinculado, false) => ("○", pizarra()),
+            (Estado::Solicitado, _) => ("◌", cadmio()),
+            (Estado::Nuevo, _) => ("●", cobalto()),
         };
         let estado = match (&p.estado, p.alcanzable) {
             (Estado::Vinculado, true) => t("tel.est.conectado"),
@@ -118,13 +118,13 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             caja.x + 2,
             yy,
             vec![
-                Span::styled(if sel { "▍" } else { " " }, bold(RED)),
+                Span::styled(if sel { "▍" } else { " " }, bold(rojo())),
                 Span::styled(format!("{marca} "), bold(color)),
                 Span::styled(
                     truncate(&p.nombre, 24),
-                    if sel { bold(PHOSPHOR) } else { fg(SILVER) },
+                    if sel { bold(fosforo()) } else { fg(plata()) },
                 ),
-                Span::styled(format!("  {estado}"), fg(SLATE)),
+                Span::styled(format!("  {estado}"), fg(pizarra())),
             ],
         );
         app.hits
@@ -139,7 +139,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
             x,
             ya,
             &truncate(&app.tel_aviso, w as usize),
-            bold(CADMIUM),
+            bold(cadmio()),
         );
     }
     if app.tiene("telefono") {

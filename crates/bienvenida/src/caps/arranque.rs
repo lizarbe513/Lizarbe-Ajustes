@@ -46,7 +46,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, area: Rect) {
             }
             let av = anim::avance_celda(g, x as u32 + 40, fila as u32);
             let color = crt_color(
-                blend(STEEL, PHOSPHOR, av),
+                blend(acero(), fosforo(), av),
                 x as u32 + xt as u32,
                 (yt - y0) as u32 + fila as u32,
                 tt,
@@ -62,10 +62,10 @@ pub fn dibujar(app: &mut App, f: &mut Frame, area: Rect) {
     if tt > 1.8 {
         let saludo = tf("arranque.saludo", &[("nombre", &app.usuario)]);
         let visible = anim::maquina(&saludo, tt - 1.8, 24.0);
-        parrafo(f, xt, yt + 4, ancho_texto, &visible, fg(SILVER));
+        parrafo(f, xt, yt + 4, ancho_texto, &visible, fg(plata()));
     }
     if tt > LISTO - 0.4 {
-        let color = blend(SLATE, PHOSPHOR, anim::pulso(tt, 1.4));
+        let color = blend(pizarra(), fosforo(), anim::pulso(tt, 1.4));
         put(
             f,
             xt,
@@ -142,10 +142,10 @@ fn crt_isotipo(
                     continue;
                 }
                 let tono = |c: Color| {
-                    let c = blend(c, PHOSPHOR, brillo_encendido);
-                    crt_color(blend(BG, c, av), cx, y as u32, tt)
+                    let c = blend(c, fosforo(), brillo_encendido);
+                    crt_color(blend(bg(), c, av), cx, y as u32, tt)
                 };
-                let mut estilo = Style::new().fg(tono(span.style.fg.unwrap_or(PHOSPHOR)));
+                let mut estilo = Style::new().fg(tono(span.style.fg.unwrap_or(fosforo())));
                 if av >= 0.75
                     && let Some(bg) = span.style.bg
                 {
@@ -166,7 +166,7 @@ fn crt_isotipo(
         let x = x0 + lw.saturating_sub(ancho) / 2;
         let y = y0 + (lh / 2) as u16;
         let linea = "━".repeat(ancho as usize);
-        put(f, x, y, vec![Span::styled(linea, bold(PHOSPHOR))]);
+        put(f, x, y, vec![Span::styled(linea, bold(fosforo()))]);
     }
 }
 
@@ -176,20 +176,20 @@ fn crt_isotipo(
 fn crt_color(c: Color, x: u32, y: u32, tt: f32) -> Color {
     let mut c = c;
     if y % 2 == 1 {
-        c = blend(c, BG, 0.28);
+        c = blend(c, bg(), 0.28);
     }
     if x % 3 == 2 {
-        c = blend(c, BG, 0.10);
+        c = blend(c, bg(), 0.10);
     }
     let haz = (tt * 4.5) % 26.0 - 5.0;
     let cerca = 1.0 - ((y as f32 - haz).abs() / 2.0).min(1.0);
     if cerca > 0.0 {
-        c = blend(c, PHOSPHOR, cerca * 0.30);
+        c = blend(c, fosforo(), cerca * 0.30);
     }
     let fotograma = (tt * 20.0) as u32;
     let mut apagado = 0.06 * anim::hash2(fotograma, 3);
     if anim::hash2(fotograma, 5) > 0.97 {
         apagado += 0.15;
     }
-    blend(c, BG, apagado)
+    blend(c, bg(), apagado)
 }

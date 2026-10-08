@@ -78,7 +78,10 @@ Guía de primer inicio para quien llega de Windows: la terminal como interfaz, p
 minimalista y se maneja siempre igual: **Enter continúa**, **Espacio hace lo que pide el paso**
 (probar, aplicar, abrir) y **←** vuelve; una frase bajo el título dice qué hacer ahora y se pone en
 verde (✓) al lograrlo. El arranque muestra el isotipo con efecto de monitor CRT (encendido, rayas de
-barrido, rejilla de píxeles, parpadeo). Recorre ocho pasos y termina con un resumen de logros:
+barrido, rejilla de píxeles, parpadeo). Los colores salen del tema activo de Omarchy y cambian en vivo
+con él (también al cambiar de tema dentro de la guía). Antes del recorrido ofrece **actualizar el
+sistema** (`omarchy-update -y`; Espacio actualiza, Enter lo omite): si la actualización trae una
+Bienvenida nueva, se reabre sola con ella. Después recorre ocho pasos y termina con un resumen de logros:
 
 1. **La tecla Super** y el «Super + algo = una orden».
 2. **Práctica en vivo**: «Pulse Super + Espacio»… y Hyprland (`.socket2.sock`) cuenta que el usuario
@@ -99,7 +102,7 @@ marca al salir, salvo que se pida volver a verla. Siempre está en Aprender › 
 
 ```bash
 lizarbe-bienvenida                  # el recorrido completo
-lizarbe-bienvenida --capitulo 4     # empezar en un capítulo (0 = arranque, 9 = final)
+lizarbe-bienvenida --capitulo 5     # empezar en un paso (0 = arranque, 1 = actualizar, 10 = final)
 lizarbe-bienvenida --demo           # sin tocar el sistema (se activa solo con --config-dir)
 ```
 

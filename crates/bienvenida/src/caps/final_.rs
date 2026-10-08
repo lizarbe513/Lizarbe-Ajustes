@@ -32,7 +32,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, area: Rect) {
             let av = anim::avance_celda(g, x as u32, fila as u32);
             spans.push(Span::styled(
                 anim::trama(av, c).to_string(),
-                fg(blend(STEEL, PHOSPHOR, av)),
+                fg(blend(acero(), fosforo(), av)),
             ));
         }
         put(
@@ -49,7 +49,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, area: Rect) {
         y,
         vec![Span::styled(
             format!("{SPARK} {}", t("final.listo")),
-            bold(PHOSPHOR),
+            bold(fosforo()),
         )],
     );
     y += 2;
@@ -71,9 +71,9 @@ pub fn dibujar(app: &mut App, f: &mut Frame, area: Rect) {
                     } else {
                         "○ ".to_string()
                     },
-                    if tiene { bold(RED) } else { fg(STEEL) },
+                    if tiene { bold(rojo()) } else { fg(acero()) },
                 ),
-                Span::styled(t(clave), if tiene { fg(PHOSPHOR) } else { fg(SLATE) }),
+                Span::styled(t(clave), if tiene { fg(fosforo()) } else { fg(pizarra()) }),
             ],
         );
     }
@@ -85,7 +85,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, area: Rect) {
             ("total", &LOGROS.len().to_string()),
         ],
     );
-    centrada(f, area, y, vec![Span::styled(total, fg(SLATE))]);
+    centrada(f, area, y, vec![Span::styled(total, fg(pizarra()))]);
     y += 2;
 
     // Un solo botón grande; repetir queda discreto debajo.

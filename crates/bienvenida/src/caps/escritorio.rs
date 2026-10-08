@@ -34,7 +34,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         let aplicado = app.tema_aplicado.as_deref() == Some(app.temas[i].as_str());
         let muestra = app.tema_colores.get(i).copied().flatten();
         let mut spans = vec![
-            Span::styled(if sel { "▍" } else { " " }, bold(RED)),
+            Span::styled(if sel { "▍" } else { " " }, bold(rojo())),
             Span::raw(" "),
         ];
         match muestra {
@@ -42,21 +42,21 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 spans.push(Span::styled("██", Style::new().fg(c.acento)));
                 spans.push(Span::styled("██", Style::new().fg(c.fondo)));
             }
-            None => spans.push(Span::styled("░░░░", fg(STEEL))),
+            None => spans.push(Span::styled("░░░░", fg(acero()))),
         }
         let nombre = truncate(&app.temas[i], lista_w.saturating_sub(10) as usize);
         spans.push(Span::styled(
             format!(" {nombre}"),
-            if sel { bold(PHOSPHOR) } else { fg(SILVER) },
+            if sel { bold(fosforo()) } else { fg(plata()) },
         ));
         if aplicado {
-            spans.push(Span::styled(format!(" {SPARK}"), bold(GREEN)));
+            spans.push(Span::styled(format!(" {SPARK}"), bold(verde())));
         }
         put(f, r.x, y, spans);
         app.hits.push((Rect::new(r.x, y, lista_w, 1), Hit::Fila(i)));
     }
     if app.temas.is_empty() {
-        texto(f, r.x, y0, &t("esc.sin_temas"), fg(SLATE));
+        texto(f, r.x, y0, &t("esc.sin_temas"), fg(pizarra()));
     }
 
     // Vista previa: una ventana en los colores del tema elegido.
@@ -128,8 +128,14 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 ],
             );
         } else {
-            marco(f, caja, Marco::Fino, STEEL, "");
-            texto(f, caja.x + 2, caja.y + 2, &t("esc.sin_vista"), fg(SLATE));
+            marco(f, caja, Marco::Fino, acero(), "");
+            texto(
+                f,
+                caja.x + 2,
+                caja.y + 2,
+                &t("esc.sin_vista"),
+                fg(pizarra()),
+            );
         }
         let yd = caja.bottom() + 1;
         if app.tema_ocupado {
@@ -140,7 +146,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
                 px,
                 yd,
                 &format!("{giro} {}", t("esc.aplicando")),
-                bold(CADMIUM),
+                bold(cadmio()),
             );
         }
         let mut xb = px;

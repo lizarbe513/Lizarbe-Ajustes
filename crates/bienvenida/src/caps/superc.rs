@@ -33,9 +33,9 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
     for (nombre, w) in teclas {
         let es_super = nombre == "Super";
         let color = if es_super {
-            blend(RED, PHOSPHOR, pulso * 0.55)
+            blend(rojo(), fosforo(), pulso * 0.55)
         } else {
-            STEEL
+            acero()
         };
         let caja = Rect::new(x, y, w, 3);
         marco(
@@ -50,7 +50,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         } else {
             nombre.to_string()
         };
-        let st = if es_super { bold(color) } else { fg(SLATE) };
+        let st = if es_super { bold(color) } else { fg(pizarra()) };
         texto(f, x + 1, y + 1, &center(&etiqueta, (w - 2) as usize), st);
         if es_super {
             x_super = x;
@@ -63,14 +63,14 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         x_super + 1,
         y,
         &format!("▲ {}", t("super.esta")),
-        bold(RED),
+        bold(rojo()),
     );
     y += 2;
 
     // Explicación breve.
     let ancho = r.width.min(76);
     let xp = r.x + r.width.saturating_sub(ancho) / 2;
-    y += parrafo(f, xp, y, ancho, &t("super.texto"), fg(SILVER)) + 1;
+    y += parrafo(f, xp, y, ancho, &t("super.texto"), fg(plata())) + 1;
 
     // «Super + algo»: tres ejemplos en líneas sueltas, sin cajas.
     let ejemplos: [(&[&str], &str); 3] = [
@@ -91,7 +91,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame, r: Rect) {
         let relleno = col - ancho_spans(&spans);
         spans.push(Span::styled(
             format!("{}   {}", " ".repeat(relleno as usize), t(clave)),
-            fg(SILVER),
+            fg(plata()),
         ));
         put(f, xp, y, spans);
         y += 2;

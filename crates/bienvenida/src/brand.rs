@@ -1,23 +1,87 @@
-//! Identidad visual de Lizarbe para la Bienvenida: paleta oficial (fija, no
-//! depende del tema de Omarchy), isotipo y piezas tipográficas.
-//! Reglas: rojo solo para marca, cursor activo y llamadas a la acción; ✦ como
-//! marca; tramas ░▒▓█ en vez de degradados; esquinas rectas.
+//! Identidad visual de Lizarbe para la Bienvenida: los colores salen del tema
+//! activo de Omarchy (y cambian en vivo con él); si no hay tema legible se usa
+//! la paleta de marca. Reglas: el acento solo para marca, cursor activo y
+//! llamadas a la acción; ✦ como marca; tramas ░▒▓█ en vez de degradados;
+//! esquinas rectas.
+
+use std::sync::RwLock;
 
 use lizarbe_core::ansi;
 use lizarbe_core::color::mix;
+use lizarbe_core::theme::Palette;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 
-pub const BG: Color = Color::Rgb(0x0D, 0x0F, 0x12);
-pub const INK: Color = Color::Rgb(0x12, 0x14, 0x18);
-pub const RED: Color = Color::Rgb(0xF6, 0x24, 0x24);
-pub const STEEL: Color = Color::Rgb(0x32, 0x36, 0x3C);
-pub const SLATE: Color = Color::Rgb(0x55, 0x5A, 0x62);
-pub const SILVER: Color = Color::Rgb(0xAA, 0xB2, 0xBE);
-pub const PHOSPHOR: Color = Color::Rgb(0xF0, 0xF3, 0xF8);
-pub const GREEN: Color = Color::Rgb(0x1A, 0xB0, 0x54);
-pub const CADMIUM: Color = Color::Rgb(0xF8, 0xD8, 0x18);
-pub const COBALT: Color = Color::Rgb(0x4B, 0x8E, 0xFF);
+#[derive(Clone, Copy)]
+struct Colores {
+    bg: Color,
+    rojo: Color,
+    acero: Color,
+    pizarra: Color,
+    plata: Color,
+    fosforo: Color,
+    verde: Color,
+    cadmio: Color,
+    cobalto: Color,
+}
+
+/// Paleta oficial de la marca (también la de las pruebas y el modo demo).
+const MARCA: Colores = Colores {
+    bg: Color::Rgb(0x0D, 0x0F, 0x12),
+    rojo: Color::Rgb(0xF6, 0x24, 0x24),
+    acero: Color::Rgb(0x32, 0x36, 0x3C),
+    pizarra: Color::Rgb(0x55, 0x5A, 0x62),
+    plata: Color::Rgb(0xAA, 0xB2, 0xBE),
+    fosforo: Color::Rgb(0xF0, 0xF3, 0xF8),
+    verde: Color::Rgb(0x1A, 0xB0, 0x54),
+    cadmio: Color::Rgb(0xF8, 0xD8, 0x18),
+    cobalto: Color::Rgb(0x4B, 0x8E, 0xFF),
+};
+
+static TEMA: RwLock<Colores> = RwLock::new(MARCA);
+
+fn actual() -> Colores {
+    TEMA.read().map(|t| *t).unwrap_or(MARCA)
+}
+
+macro_rules! color {
+    ($($nombre:ident),*) => {
+        $(pub fn $nombre() -> Color { actual().$nombre })*
+    };
+}
+color!(
+    bg, rojo, acero, pizarra, plata, fosforo, verde, cadmio, cobalto
+);
+
+/// Un QR se lee mejor con módulos oscuros sobre claro, sea cual sea el tema.
+pub const QR_OSCURO: Color = Color::Rgb(0x12, 0x14, 0x18);
+pub const QR_CLARO: Color = Color::Rgb(0xF0, 0xF3, 0xF8);
+
+/// Usa los colores del tema (acento, texto, apagado…).
+pub fn aplicar_paleta(p: &Palette) {
+    let t = Colores {
+        bg: p.bg,
+        rojo: p.accent,
+        acero: p.dim,
+        pizarra: p.muted,
+        plata: p.fg,
+        fosforo: p.bright,
+        verde: p.ok,
+        cadmio: p.warn,
+        cobalto: blend(p.accent, p.fg, 0.5),
+    };
+    if let Ok(mut w) = TEMA.write() {
+        *w = t;
+    }
+}
+
+/// Vuelve a la paleta de marca (las pruebas lo usan tras probar un tema).
+#[cfg(test)]
+pub fn paleta_de_marca() {
+    if let Ok(mut w) = TEMA.write() {
+        *w = MARCA;
+    }
+}
 
 /// La marca de Lizarbe: el destello.
 pub const SPARK: &str = "✦";
@@ -44,8 +108,21 @@ pub fn blend(a: Color, b: Color, t: f32) -> Color {
 }
 
 /// El isotipo (cubo con destello) en medios bloques de color verdadero.
+/// El rojo de la marca del dibujo se cambia por el acento del tema.
 pub fn isotipo() -> Vec<Line<'static>> {
-    ansi::parse(include_str!("../assets/isotipo.ansi"))
+    const ROJO_DEL_DIBUJO: Color = Color::Rgb(252, 22, 28);
+    let mut lineas = ansi::parse(include_str!("../assets/isotipo.ansi"));
+    for linea in &mut lineas {
+        for span in &mut linea.spans {
+            if span.style.fg == Some(ROJO_DEL_DIBUJO) {
+                span.style.fg = Some(rojo());
+            }
+            if span.style.bg == Some(ROJO_DEL_DIBUJO) {
+                span.style.bg = Some(rojo());
+            }
+        }
+    }
+    lineas
 }
 
 /// Letras del logotipo en una rejilla de 5×5 puntos.
@@ -118,13 +195,13 @@ mod tests {
         assert!(
             l.iter()
                 .flat_map(|x| &x.spans)
-                .any(|s| s.style.fg == Some(Color::Rgb(252, 22, 28)))
+                .any(|s| s.style.fg == Some(rojo()))
         );
     }
 
     #[test]
     fn brand_blend_moves_between_colors() {
-        assert_eq!(blend(BG, PHOSPHOR, 0.0), BG);
-        assert_eq!(blend(BG, PHOSPHOR, 1.0), PHOSPHOR);
+        assert_eq!(blend(MARCA.bg, MARCA.fosforo, 0.0), MARCA.bg);
+        assert_eq!(blend(MARCA.bg, MARCA.fosforo, 1.0), MARCA.fosforo);
     }
 }

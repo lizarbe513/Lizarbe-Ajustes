@@ -20,7 +20,7 @@ use crate::app::App;
 use crate::i18n::t;
 
 const OPTS: &[Opt] = &[
-    Opt::value("--capitulo", "<0-9>", "cli.capitulo"),
+    Opt::value("--capitulo", "<0-10>", "cli.capitulo"),
     Opt::flag("--demo", "cli.demo"),
 ];
 
@@ -38,6 +38,15 @@ fn main() -> Result<()> {
     let demo = args.has("--demo") || args.config_dir.is_some();
     let mut app = App::new(demo, capitulo);
     lizarbe_core::term::run(&mut app, &t("app.name"))?;
+    // Tras actualizar hay una Bienvenida nueva: se reabre en lugar de esta.
+    if let Some(cap) = app.relanzar {
+        use std::os::unix::process::CommandExt;
+        let error = std::process::Command::new("lizarbe-bienvenida")
+            .arg("--capitulo")
+            .arg(cap.to_string())
+            .exec();
+        eprintln!("lizarbe-bienvenida: {error}");
+    }
     // Al salir: o se deja la marca para volver a mostrarla, o se quita.
     if !demo && !app.volver_a_mostrar {
         let _ = std::fs::remove_file(sistema::marca_pendiente());

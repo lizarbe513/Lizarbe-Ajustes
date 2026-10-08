@@ -26,7 +26,7 @@ const ALTO_MAX: u16 = 32;
 pub fn dibujar(app: &mut App, f: &mut Frame) {
     app.hits.clear();
     let area = f.area();
-    f.render_widget(Block::new().style(Style::new().bg(BG).fg(SILVER)), area);
+    f.render_widget(Block::new().style(Style::new().bg(bg()).fg(plata())), area);
     if area.width < ANCHO_MIN || area.height < ALTO_MIN {
         demasiado_pequena(f, area);
         return;
@@ -56,6 +56,7 @@ pub fn dibujar(app: &mut App, f: &mut Frame) {
                 Cap::Configurar => caps::configurar::dibujar(app, f, cuerpo),
                 Cap::Conceptos => caps::conceptos::dibujar(app, f, cuerpo),
                 Cap::Atajos => caps::atajos::dibujar(app, f, cuerpo),
+                Cap::Actualizar => caps::actualizar::dibujar(app, f, cuerpo),
                 Cap::Arranque | Cap::Final => {}
             }
         }
@@ -86,7 +87,7 @@ fn demasiado_pequena(f: &mut Frame, area: Rect) {
             y,
             vec![Span::styled(
                 l.clone(),
-                if i == 0 { bold(RED) } else { fg(SILVER) },
+                if i == 0 { bold(rojo()) } else { fg(plata()) },
             )],
         );
     }
@@ -145,7 +146,7 @@ pub fn marco(f: &mut Frame, r: Rect, tipo: Marco, color: ratatui::style::Color, 
     }
     texto(f, r.x, r.y, &arriba, st);
     if con_titulo {
-        texto(f, r.x + 2, r.y, &tit, bold(PHOSPHOR));
+        texto(f, r.x + 2, r.y, &tit, bold(fosforo()));
     }
     for y in 1..r.height - 1 {
         texto(f, r.x, r.y + y, &v.to_string(), st);
@@ -164,11 +165,11 @@ pub fn marco(f: &mut Frame, r: Rect, tipo: Marco, color: ratatui::style::Color, 
 pub fn tecla(label: &str, activa: bool) -> Span<'static> {
     let st = if activa {
         Style::new()
-            .fg(PHOSPHOR)
-            .bg(RED)
+            .fg(fosforo())
+            .bg(rojo())
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::new().fg(PHOSPHOR).bg(STEEL)
+        Style::new().fg(fosforo()).bg(acero())
     };
     Span::styled(format!(" {label} "), st)
 }
@@ -184,7 +185,7 @@ pub fn combo(teclas: &[&str], activa: bool, separador: &str) -> Vec<Span<'static
                 } else {
                     format!(" {separador} ")
                 },
-                fg(SLATE),
+                fg(pizarra()),
             ));
         }
         v.push(tecla(k, activa));
@@ -199,18 +200,18 @@ pub fn ancho_spans(s: &[Span]) -> u16 {
 /// Rellena un rectángulo con el fondo.
 pub fn limpiar(f: &mut Frame, r: Rect) {
     f.render_widget(Clear, r);
-    f.render_widget(Block::new().style(Style::new().bg(BG).fg(SILVER)), r);
+    f.render_widget(Block::new().style(Style::new().bg(bg()).fg(plata())), r);
 }
 
 /// Título del paso y, justo debajo, la frase que dice qué hacer ahora. Devuelve las filas usadas.
 pub fn titulo_capitulo(app: &App, f: &mut Frame, r: Rect, clave: &str) -> u16 {
-    texto(f, r.x, r.y, &t(clave), bold(PHOSPHOR));
+    texto(f, r.x, r.y, &t(clave), bold(fosforo()));
     let g = app.guia();
     let (marca, st_marca, st) = if g.hecho {
-        ("✓", bold(GREEN), bold(GREEN))
+        ("✓", bold(verde()), bold(verde()))
     } else {
         let p = anim::pulso(app.cap_t(), 1.4);
-        ("▸", bold(blend(RED, PHOSPHOR, p * 0.5)), fg(PHOSPHOR))
+        ("▸", bold(blend(rojo(), fosforo(), p * 0.5)), fg(fosforo()))
     };
     texto(f, r.x, r.y + 1, marca, st_marca);
     let filas = parrafo(f, r.x + 2, r.y + 1, r.width.saturating_sub(2), &g.texto, st);
@@ -225,13 +226,17 @@ fn cabecera(app: &mut App, f: &mut Frame, area: Rect) {
         area.x + 2,
         area.y,
         vec![
-            Span::styled(format!("{SPARK} "), bold(RED)),
-            Span::styled(spaced("LIZARBE"), bold(PHOSPHOR)),
+            Span::styled(format!("{SPARK} "), bold(rojo())),
+            Span::styled(spaced("LIZARBE"), bold(fosforo())),
         ],
     );
     let actual = app.capitulo().numero().unwrap_or(0);
     let total = Cap::NUMERADOS;
-    let cuenta = format!("{actual} / {total}");
+    let cuenta = if actual > 0 {
+        format!("{actual} / {total}")
+    } else {
+        String::new()
+    };
     let ayuda = format!("? {}", t("ayuda.titulo"));
     let x = area
         .right()
@@ -241,9 +246,9 @@ fn cabecera(app: &mut App, f: &mut Frame, area: Rect) {
         x,
         area.y,
         vec![
-            Span::styled(ayuda, fg(SLATE)),
+            Span::styled(ayuda, fg(pizarra())),
             Span::raw("   "),
-            Span::styled(cuenta, bold(PHOSPHOR)),
+            Span::styled(cuenta, bold(fosforo())),
         ],
     );
     // Una raya fina dividida en un tramo por paso; los hechos, en rojo.
@@ -258,10 +263,10 @@ fn cabecera(app: &mut App, f: &mut Frame, area: Rect) {
         };
         let lit = app.hover == Some(Hit::Cap(i));
         let (c, st) = match i.cmp(&actual) {
-            std::cmp::Ordering::Greater => ('─', fg(STEEL)),
-            _ => ('━', fg(RED)),
+            std::cmp::Ordering::Greater => ('─', fg(acero())),
+            _ => ('━', fg(rojo())),
         };
-        let st = if lit { bold(CADMIUM) } else { st };
+        let st = if lit { bold(cadmio()) } else { st };
         texto(f, x, area.y + 1, &c.to_string().repeat(w as usize), st);
         app.hits
             .push((Rect::new(x, area.y + 1, w + 1, 1), Hit::Cap(i)));
@@ -272,10 +277,10 @@ fn cabecera(app: &mut App, f: &mut Frame, area: Rect) {
 /// medio y, a la derecha y siempre en el mismo sitio, continuar.
 fn pie(app: &mut App, f: &mut Frame, area: Rect) {
     let y = area.bottom() - 1;
-    lizarbe_core::ui::rule_h(f, area.x + 2, y - 1, area.width.saturating_sub(4), STEEL);
+    lizarbe_core::ui::rule_h(f, area.x + 2, y - 1, area.width.saturating_sub(4), acero());
     let lit = |app: &App, h: Hit, normal| {
         if app.hover == Some(h) {
-            bold(CADMIUM)
+            bold(cadmio())
         } else {
             normal
         }
@@ -286,7 +291,7 @@ fn pie(app: &mut App, f: &mut Frame, area: Rect) {
     let tecla_enter = tecla("Enter", true);
     let w_sig = tecla_enter.content.width() as u16 + etiqueta.width() as u16;
     let x_sig = area.right().saturating_sub(2 + w_sig);
-    let st = lit(app, Hit::Siguiente, bold(PHOSPHOR));
+    let st = lit(app, Hit::Siguiente, bold(fosforo()));
     put(f, x_sig, y, vec![tecla_enter, Span::styled(etiqueta, st)]);
     app.hits
         .push((Rect::new(x_sig, y, w_sig, 1), Hit::Siguiente));
@@ -296,7 +301,7 @@ fn pie(app: &mut App, f: &mut Frame, area: Rect) {
     if app.cap > 0 {
         let atras = format!("← {}", t("nav.atras"));
         let w = atras.width() as u16;
-        let st = lit(app, Hit::Anterior, fg(SILVER));
+        let st = lit(app, Hit::Anterior, fg(plata()));
         texto(f, x, y, &atras, st);
         app.hits.push((Rect::new(x, y, w, 1), Hit::Anterior));
         x += w + 4;
@@ -307,7 +312,7 @@ fn pie(app: &mut App, f: &mut Frame, area: Rect) {
         let hit = Hit::Boton(accion);
         let spans = vec![
             tecla(k, false),
-            Span::styled(format!(" {etiqueta}"), lit(app, hit, fg(PHOSPHOR))),
+            Span::styled(format!(" {etiqueta}"), lit(app, hit, fg(fosforo()))),
         ];
         let w = ancho_spans(&spans);
         if x + w + 2 < x_sig {
@@ -340,7 +345,7 @@ fn aviso_logro(app: &App, f: &mut Frame, area: Rect) {
         f,
         r,
         Marco::Grueso,
-        RED,
+        rojo(),
         &format!("{SPARK} {}", t("logro.titulo")),
     );
     texto(
@@ -348,16 +353,16 @@ fn aviso_logro(app: &App, f: &mut Frame, area: Rect) {
         r.x + 2,
         r.y + 2,
         &truncate(texto_logro, r.width.saturating_sub(4) as usize),
-        bold(PHOSPHOR),
+        bold(fosforo()),
     );
 }
 
 fn modal_salir(app: &mut App, f: &mut Frame, area: Rect) {
     let r = lizarbe_core::ui::centered(area, 64, 11);
     limpiar(f, r);
-    marco(f, r, Marco::Doble, RED, &t("salir.titulo"));
+    marco(f, r, Marco::Doble, rojo(), &t("salir.titulo"));
     let mut y = r.y + 2;
-    y += parrafo(f, r.x + 3, y, r.width - 6, &t("salir.texto"), fg(PHOSPHOR));
+    y += parrafo(f, r.x + 3, y, r.width - 6, &t("salir.texto"), fg(fosforo()));
     y += 1;
     for (tecla_, clave) in [
         ("Enter", "salir.si"),
@@ -370,7 +375,7 @@ fn modal_salir(app: &mut App, f: &mut Frame, area: Rect) {
             y,
             vec![
                 tecla(tecla_, tecla_ == "Enter"),
-                Span::styled(format!("  {}", t(clave)), fg(SILVER)),
+                Span::styled(format!("  {}", t(clave)), fg(plata())),
             ],
         );
         y += 1;
@@ -381,7 +386,7 @@ fn modal_salir(app: &mut App, f: &mut Frame, area: Rect) {
 fn modal_ayuda(f: &mut Frame, area: Rect) {
     let r = lizarbe_core::ui::centered(area, 70, 12);
     limpiar(f, r);
-    marco(f, r, Marco::Doble, RED, &t("ayuda.titulo"));
+    marco(f, r, Marco::Doble, rojo(), &t("ayuda.titulo"));
     let filas = [
         ("Enter", "ayuda.continuar"),
         ("Espacio", "ayuda.espacio"),
@@ -397,13 +402,13 @@ fn modal_ayuda(f: &mut Frame, area: Rect) {
             y,
             vec![
                 tecla(k, k == "Enter"),
-                Span::styled(format!("  {}", t(clave)), fg(SILVER)),
+                Span::styled(format!("  {}", t(clave)), fg(plata())),
             ],
         );
         y += 1;
     }
     y += 1;
-    parrafo(f, r.x + 3, y, r.width - 6, &t("ayuda.pie"), fg(SLATE));
+    parrafo(f, r.x + 3, y, r.width - 6, &t("ayuda.pie"), fg(pizarra()));
 }
 
 /// Recorta una línea de spans a `ancho` celdas.
@@ -468,7 +473,7 @@ pub fn boton(app: &mut App, f: &mut Frame, x: u16, y: u16, b: Boton) -> u16 {
         tecla(b.tecla, b.principal || lit),
         Span::styled(
             format!(" {}", b.etiqueta),
-            if lit { bold(CADMIUM) } else { fg(PHOSPHOR) },
+            if lit { bold(cadmio()) } else { fg(fosforo()) },
         ),
     ];
     let w = ancho_spans(&spans);
@@ -530,7 +535,7 @@ mod tests {
 
     #[test]
     fn too_small_windows_ask_to_be_enlarged() {
-        let mut a = app_en(1);
+        let mut a = app_en(2);
         let t = texto_de(&mut a, 60, 20);
         assert!(t.contains("demasiado pequeña"), "{t}");
         assert!(!t.contains("LIZARBE"));
@@ -549,7 +554,7 @@ mod tests {
             (8, "Atajos imprescindibles"),
         ];
         for (n, titulo) in titulos {
-            let mut a = app_en(n);
+            let mut a = app_en(Cap::de_numero(n));
             let t = texto_de(&mut a, 130, 40);
             assert!(t.contains(titulo), "paso {n}: falta «{titulo}»\n{t}");
             assert!(t.contains(&format!("{n} / 8")), "paso {n}: falta el avance");
@@ -569,9 +574,56 @@ mod tests {
     }
 
     #[test]
+    fn update_step_lists_packages_and_has_no_step_number() {
+        let mut a = app_en(Cap::Actualizar.indice());
+        let t = texto_de(&mut a, 120, 36);
+        for needle in [
+            "Actualice su sistema",
+            "2 actualizaciones disponibles",
+            "lizarbe-ajustes",
+            "1.0.1 → 1.1.0",
+            "Espacio",
+            "Actualizar ahora",
+            "Omitir",
+        ] {
+            assert!(t.contains(needle), "falta «{needle}»\n{t}");
+        }
+        assert!(!t.contains(" / 8"), "{t}");
+        a.act = crate::app::Act::AlDia;
+        assert!(texto_de(&mut a, 120, 36).contains("al día"));
+        a.act = crate::app::Act::SinRed;
+        assert!(texto_de(&mut a, 120, 36).contains("sin conexión"));
+    }
+
+    #[test]
+    fn colors_follow_the_theme_palette() {
+        let p = lizarbe_core::theme::Palette {
+            accent: ratatui::style::Color::Rgb(1, 2, 3),
+            bg: ratatui::style::Color::Rgb(250, 250, 250),
+            ..Default::default()
+        };
+        crate::brand::aplicar_paleta(&p);
+        assert_eq!(crate::brand::rojo(), p.accent);
+        assert_eq!(crate::brand::bg(), p.bg);
+        // El isotipo toma el acento del tema.
+        assert!(
+            crate::brand::isotipo()
+                .iter()
+                .flat_map(|l| &l.spans)
+                .any(|s| s.style.fg == Some(p.accent))
+        );
+        // Y la pantalla se pinta con el fondo del tema.
+        let mut term = Terminal::new(TestBackend::new(100, 30)).unwrap();
+        let mut a = app_en(Cap::Super.indice());
+        term.draw(|f| dibujar(&mut a, f)).unwrap();
+        assert_eq!(term.backend().buffer()[(0, 0)].bg, p.bg);
+        crate::brand::paleta_de_marca();
+    }
+
+    #[test]
     fn the_footer_shows_the_step_action_only_where_there_is_one() {
         for (n, esperado) in [(4, "Vincular"), (5, "Aplicar"), (6, "Abrir ahora")] {
-            let mut a = app_en(n);
+            let mut a = app_en(Cap::de_numero(n));
             let ultima = texto_de(&mut a, 130, 40)
                 .lines()
                 .last()
@@ -583,7 +635,7 @@ mod tests {
             );
         }
         for n in [1, 7, 8] {
-            let mut a = app_en(n);
+            let mut a = app_en(Cap::de_numero(n));
             let ultima = texto_de(&mut a, 130, 40)
                 .lines()
                 .last()
@@ -652,7 +704,7 @@ mod tests {
 
     #[test]
     fn super_chapter_draws_the_keyboard_and_examples() {
-        let mut a = app_en(1);
+        let mut a = app_en(2);
         let t = texto_de(&mut a, 120, 36);
         for needle in [
             "Ctrl",
@@ -668,7 +720,7 @@ mod tests {
 
     #[test]
     fn practice_shows_challenges_radar_and_marks_progress() {
-        let mut a = app_en(2);
+        let mut a = app_en(3);
         let t = texto_de(&mut a, 130, 40);
         for needle in [
             "Abra el menú de Omarchy",
@@ -697,7 +749,7 @@ mod tests {
 
     #[test]
     fn toy_terminal_shows_prompt_history_and_ghost_suggestion() {
-        let mut a = app_en(3);
+        let mut a = app_en(4);
         let t = texto_de(&mut a, 120, 36);
         assert!(t.contains("❯"), "{t}");
         assert!(t.contains("fastfetch"), "debe sugerir fastfetch\n{t}");
@@ -710,7 +762,7 @@ mod tests {
 
     #[test]
     fn phone_chapter_shows_a_scannable_qr_steps_and_devices() {
-        let mut a = app_en(4);
+        let mut a = app_en(5);
         let t = texto_de(&mut a, 130, 40);
         for needle in [
             "Instale KDE Connect",
@@ -734,7 +786,7 @@ mod tests {
 
     #[test]
     fn desktop_chapter_lists_themes_with_a_preview() {
-        let mut a = app_en(5);
+        let mut a = app_en(6);
         let t = texto_de(&mut a, 130, 40);
         for needle in [
             "Lizarbe Light",
@@ -751,7 +803,7 @@ mod tests {
 
     #[test]
     fn tools_chapter_describes_the_selected_tool() {
-        let mut a = app_en(6);
+        let mut a = app_en(7);
         for (i, nombre) in [
             "Escritorio",
             "Widgets y barra",
@@ -773,7 +825,7 @@ mod tests {
 
     #[test]
     fn concepts_chapter_has_a_drawing_for_every_concept() {
-        let mut a = app_en(7);
+        let mut a = app_en(8);
         for i in 0..crate::contenido::CONCEPTOS.len() {
             a.concepto_sel = i;
             for tt in [0.5, 2.5, 5.0] {
@@ -799,7 +851,7 @@ mod tests {
 
     #[test]
     fn shortcuts_chapter_scrolls_to_keep_the_selection_visible() {
-        let mut a = app_en(8);
+        let mut a = app_en(9);
         let t = texto_de(&mut a, 120, 30);
         assert!(t.contains("LO BÁSICO") && t.contains("Terminal"), "{t}");
         a.atajos_scroll = crate::contenido::total_atajos() - 1;
@@ -813,7 +865,7 @@ mod tests {
 
     #[test]
     fn final_screen_lists_achievements_and_the_call_to_action() {
-        let mut a = app_en(9);
+        let mut a = app_en(10);
         a.otorgar("menu");
         a.otorgar("telefono");
         a.usuario = "Ana".into();
@@ -831,7 +883,7 @@ mod tests {
 
     #[test]
     fn modals_draw_on_top() {
-        let mut a = app_en(2);
+        let mut a = app_en(3);
         a.on_key(tecla_(KeyCode::Char('q')));
         let t = texto_de(&mut a, 120, 36);
         assert!(
@@ -846,7 +898,7 @@ mod tests {
     #[test]
     fn clicking_the_header_dots_and_footer_buttons_navigates() {
         use ratatui::crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-        let mut a = app_en(2);
+        let mut a = app_en(3);
         let _ = render(&mut a, 120, 36);
         let clic = |a: &mut App, x: u16, y: u16| {
             a.on_mouse(MouseEvent {
@@ -911,7 +963,7 @@ mod tests {
 
     #[test]
     fn the_achievement_toast_slides_in_without_breaking() {
-        let mut a = app_en(2);
+        let mut a = app_en(3);
         a.t = 10.0;
         a.otorgar("menu");
         let hasta = a.toast.as_ref().unwrap().1;
