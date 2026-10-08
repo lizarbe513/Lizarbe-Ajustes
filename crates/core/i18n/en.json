@@ -32,6 +32,7 @@
   "err.float": "Type a number (e.g. 0.85).",
   "err.int": "Type a whole number.",
   "err.range": "Must be between {min} and {max}.",
+  "exec.esc_hint": "Esc cancels and returns to {app}",
   "exec.press_enter": "Press Enter to return to {app}… ",
   "ft.all": "all",
   "ft.back": "back",

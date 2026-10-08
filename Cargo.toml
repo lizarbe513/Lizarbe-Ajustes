@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.8.1"
+version = "0.8.2"
 license = "MIT"
 edition = "2024"
 repository = "https://github.com/lizarbe513/Lizarbe-Ajustes"
@@ -13,6 +13,7 @@ lizarbe-core = { path = "crates/core" }
 anyhow = "1.0.104"
 chrono = "0.4.45"
 dirs = "7.0.0"
+libc = "0.2"
 ratatui = "0.30.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }

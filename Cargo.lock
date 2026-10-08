@@ -1097,11 +1097,12 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "lizarbe-core"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "chrono",
  "dirs",
+ "libc",
  "ratatui",
  "serde",
  "serde_json",
@@ -1112,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-escritorio"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1124,7 +1125,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-temas"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "dirs",
@@ -1139,7 +1140,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-tienda"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "lizarbe-core",
@@ -1151,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "lizarbe-widgets"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "anyhow",
  "chrono",

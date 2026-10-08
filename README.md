@@ -76,8 +76,9 @@ Instalar programas como en una tienda, sin saber el nombre del paquete: categor�
 tu idioma, búsqueda por lo que quieres hacer ("música", "editar vídeo") y marcar varias apps para
 instalarlas de una vez. Es la pantalla que se abre en Instalar › Paquete (repositorios oficiales) y en
 Instalar › AUR (programas de la comunidad, que se compilan en el equipo): el menú de Omarchy no cambia,
-solo lo que se abre. La tecla `a` lleva al buscador de siempre (fzf) de la fuente en la que estás, para
-quien ya sabe qué paquete quiere.
+solo lo que se abre. Las apps destacadas se muestran como tarjetas (logo a color, nombre, resumen y
+etiquetas; el borde grueso marca la elegida). La tecla `a` («Buscar en todo») abre el buscador fzf de la
+fuente en la que estás para llegar a cualquier paquete; si ya escribiste una búsqueda, se abre filtrado.
 
 El catálogo es `crates/tienda/catalogo.toml` (se embebe en el binario). Para añadir una app basta una
 entrada `[[app]]` (`fuente = "aur"` para las del AUR; por defecto son de los repos).
@@ -86,7 +87,9 @@ entrada `[[app]]` (`fuente = "aur"` para las del AUR; por defecto son de los rep
 Teclas, como en Escritorio: el panel con el foco lleva el marcador `▍` en color de acento (en el otro,
 atenuado). `↑↓` cambia de categoría; `Enter`, `Espacio` o `→` entran a la lista; `Esc` o `←` vuelven a las
 categorías, y `Esc` desde ahí sale. `Tab` alterna de panel, `1`-`9` saltan a una categoría, `/` busca
-(`Esc` borra la búsqueda), `Espacio` marca, `Enter` instala, `x` quita, `o` abre, `a` el buscador clásico.
+(`Esc` borra la búsqueda), `Espacio` marca, `Enter` instala, `x` quita, `o` abre, `a` busca en todo.
+Mientras corre un comando (la contraseña de sudo, la descarga) **`Esc` lo cancela y vuelve a la tienda**;
+por eso `Ctrl+C` no interrumpe ahí, y una flecha o `Alt`+tecla escritas en la contraseña también cancelan.
 
 ```bash
 lizarbe-tienda --fuente aur             # abrir el modo AUR (por defecto: repos)
@@ -210,8 +213,12 @@ Four TUI apps (three to configure [Omarchy](https://omarchy.org) without editing
 - **App Store** (`lizarbe-tienda`): browse and install apps by category with descriptions in your
   language, search by what you want to do, and mark several apps to install at once. It is the
   screen opened by Install › Package (official repos) and Install › AUR (community programs built on
-  your computer); the Omarchy menu itself is unchanged, only what it opens. Key `a` goes to the
-  classic fuzzy finder for the current source. The curated catalog is `crates/tienda/catalogo.toml`.
+  your computer); the Omarchy menu itself is unchanged, only what it opens. Featured apps are cards
+  (colored logo, name, summary, tags; a thick border marks the selected one). Key `a` ("Search
+  everything") opens the fuzzy finder for the current source to reach any package, pre-filtered with
+  what you typed. While a command runs (sudo password, download) `Esc` cancels it and returns to the
+  store. The curated catalog is `crates/tienda/catalogo.toml` (`icono` and `color` give each card its
+  logo).
 
 All four share the same keys and mouse behaviour: `/` or `Ctrl+F` searches every option and
 jumps to it, right-click opens a context menu, `?` shows help. Common options: `--lang <es|en>`,

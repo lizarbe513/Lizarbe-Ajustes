@@ -4,52 +4,63 @@
 [[categoria]]
 id = "internet"
 icono = "󰖟"
+color = "#4285F4"
 nombre = { es = "Internet", en = "Internet" }
 
 [[categoria]]
 id = "comunicacion"
 icono = "󰍡"
+color = "#26A5E4"
 nombre = { es = "Comunicación", en = "Communication" }
 
 [[categoria]]
 id = "oficina"
 icono = "󰈙"
+color = "#18A303"
 nombre = { es = "Oficina y notas", en = "Office & Notes" }
 
 [[categoria]]
 id = "graficos"
 icono = "󰏘"
+color = "#E91E63"
 nombre = { es = "Dibujo y fotografía", en = "Drawing & Photos" }
 
 [[categoria]]
 id = "3d"
 icono = "󰆧"
+color = "#EA7600"
 nombre = { es = "3D y CAD", en = "3D & CAD" }
 
 [[categoria]]
 id = "multimedia"
 icono = "󰎈"
+color = "#FF8800"
 nombre = { es = "Música y vídeo", en = "Music & Video" }
 
 [[categoria]]
 id = "juegos"
 icono = "󰊖"
+color = "#5C6BC0"
 nombre = { es = "Juegos", en = "Games" }
 
 [[categoria]]
 id = "desarrollo"
 icono = "󰅩"
+color = "#007ACC"
 nombre = { es = "Programación", en = "Programming" }
 
 [[categoria]]
 id = "utilidades"
 icono = "󰒓"
+color = "#7A7A7A"
 nombre = { es = "Utilidades", en = "Utilities" }
 
 # ---------------------------------------------------------------- Internet
 
 [[app]]
 id = "firefox"
+icono = "\U0000F269"
+color = "#FF7139"
 nombre = "Firefox"
 paquetes = ["firefox"]
 categoria = "internet"
@@ -61,6 +72,8 @@ desktop = "firefox"
 
 [[app]]
 id = "chromium"
+icono = "\U0000F268"
+color = "#4285F4"
 nombre = "Chromium"
 paquetes = ["chromium"]
 categoria = "internet"
@@ -71,6 +84,8 @@ desktop = "chromium"
 
 [[app]]
 id = "zen"
+icono = "\U000F0239"
+color = "#F2B134"
 nombre = "Zen Browser"
 paquetes = ["zen-browser-bin"]
 categoria = "internet"
@@ -82,6 +97,8 @@ desktop = "zen"
 
 [[app]]
 id = "thunderbird"
+icono = "\U000F01EE"
+color = "#0A84FF"
 nombre = "Thunderbird"
 paquetes = ["thunderbird"]
 categoria = "internet"
@@ -92,6 +109,8 @@ desktop = "net.thunderbird.Thunderbird"
 
 [[app]]
 id = "qbittorrent"
+icono = "\U000F01DA"
+color = "#2F67BA"
 nombre = "qBittorrent"
 paquetes = ["qbittorrent"]
 categoria = "internet"
@@ -102,6 +121,8 @@ desktop = "org.qbittorrent.qBittorrent"
 
 [[app]]
 id = "localsend"
+icono = "\U000F048A"
+color = "#0E9AA7"
 nombre = "LocalSend"
 paquetes = ["localsend"]
 categoria = "internet"
@@ -113,6 +134,8 @@ desktop = "localsend"
 
 [[app]]
 id = "kdeconnect"
+icono = "\U000F011C"
+color = "#3DAEE9"
 nombre = "KDE Connect"
 paquetes = ["kdeconnect"]
 categoria = "internet"
@@ -125,6 +148,8 @@ desktop = "org.kde.kdeconnect.app"
 
 [[app]]
 id = "discord"
+icono = "\U000F066F"
+color = "#5865F2"
 nombre = "Discord"
 paquetes = ["discord"]
 categoria = "comunicacion"
@@ -135,6 +160,8 @@ desktop = "discord"
 
 [[app]]
 id = "telegram"
+icono = "\U0000F2C6"
+color = "#26A5E4"
 nombre = "Telegram"
 paquetes = ["telegram-desktop"]
 categoria = "comunicacion"
@@ -145,6 +172,8 @@ desktop = "org.telegram.desktop"
 
 [[app]]
 id = "signal"
+icono = "\U000F0361"
+color = "#3A76F0"
 nombre = "Signal"
 paquetes = ["signal-desktop"]
 categoria = "comunicacion"
@@ -157,6 +186,8 @@ desktop = "signal"
 
 [[app]]
 id = "libreoffice"
+icono = "\U000F0219"
+color = "#18A303"
 nombre = "LibreOffice"
 paquetes = ["libreoffice-fresh"]
 categoria = "oficina"
@@ -168,6 +199,8 @@ desktop = "libreoffice-startcenter"
 
 [[app]]
 id = "obsidian"
+icono = "\U000F01C8"
+color = "#7C3AED"
 nombre = "Obsidian"
 paquetes = ["obsidian"]
 categoria = "oficina"
@@ -178,6 +211,8 @@ desktop = "obsidian"
 
 [[app]]
 id = "xournalpp"
+icono = "\U000F03EB"
+color = "#3584E4"
 nombre = "Xournal++"
 paquetes = ["xournalpp"]
 categoria = "oficina"
@@ -188,6 +223,8 @@ desktop = "com.github.xournalpp.xournalpp"
 
 [[app]]
 id = "okular"
+icono = "\U000F0226"
+color = "#1D99F3"
 nombre = "Okular"
 paquetes = ["okular"]
 categoria = "oficina"
@@ -200,6 +237,8 @@ desktop = "org.kde.okular"
 
 [[app]]
 id = "gimp"
+icono = "\U000F03D8"
+color = "#7F6D4F"
 nombre = "GIMP"
 paquetes = ["gimp"]
 categoria = "graficos"
@@ -211,6 +250,8 @@ desktop = "gimp"
 
 [[app]]
 id = "krita"
+icono = "\U000F00E3"
+color = "#3BABFF"
 nombre = "Krita"
 paquetes = ["krita"]
 categoria = "graficos"
@@ -222,6 +263,8 @@ desktop = "org.kde.krita"
 
 [[app]]
 id = "inkscape"
+icono = "\U000F0558"
+color = "#6E6E6E"
 nombre = "Inkscape"
 paquetes = ["inkscape"]
 categoria = "graficos"
@@ -232,6 +275,8 @@ desktop = "org.inkscape.Inkscape"
 
 [[app]]
 id = "pinta"
+icono = "\U000F02E9"
+color = "#4AA564"
 nombre = "Pinta"
 paquetes = ["pinta"]
 categoria = "graficos"
@@ -242,6 +287,8 @@ desktop = "pinta"
 
 [[app]]
 id = "libresprite"
+icono = "\U000F0570"
+color = "#E66A6A"
 nombre = "LibreSprite"
 paquetes = ["libresprite"]
 categoria = "graficos"
@@ -254,6 +301,8 @@ desktop = "libresprite"
 
 [[app]]
 id = "blender"
+icono = "\U000F00AB"
+color = "#EA7600"
 nombre = "Blender"
 paquetes = ["blender"]
 categoria = "3d"
@@ -265,6 +314,8 @@ desktop = "blender"
 
 [[app]]
 id = "freecad"
+icono = "\U000F01A7"
+color = "#B72B2B"
 nombre = "FreeCAD"
 paquetes = ["freecad"]
 categoria = "3d"
@@ -275,6 +326,8 @@ desktop = "org.freecad.FreeCAD"
 
 [[app]]
 id = "godot"
+icono = "\U000F0297"
+color = "#478CBF"
 nombre = "Godot"
 paquetes = ["godot"]
 categoria = "3d"
@@ -287,6 +340,8 @@ desktop = "org.godotengine.Godot4"
 
 [[app]]
 id = "vlc"
+icono = "\U000F057C"
+color = "#FF8800"
 nombre = "VLC"
 paquetes = ["vlc"]
 categoria = "multimedia"
@@ -298,6 +353,8 @@ desktop = "vlc"
 
 [[app]]
 id = "mpv"
+icono = "\U000F040A"
+color = "#6B2B7F"
 nombre = "mpv"
 paquetes = ["mpv"]
 categoria = "multimedia"
@@ -308,6 +365,8 @@ desktop = "mpv"
 
 [[app]]
 id = "spotify"
+icono = "\U0000F1BC"
+color = "#1DB954"
 nombre = "Spotify"
 paquetes = ["spotify"]
 categoria = "multimedia"
@@ -318,6 +377,8 @@ desktop = "spotify"
 
 [[app]]
 id = "obs"
+icono = "\U000F044B"
+color = "#5E5E6E"
 nombre = "OBS Studio"
 paquetes = ["obs-studio"]
 categoria = "multimedia"
@@ -328,6 +389,8 @@ desktop = "com.obsproject.Studio"
 
 [[app]]
 id = "kdenlive"
+icono = "\U000F0567"
+color = "#3DAEE9"
 nombre = "Kdenlive"
 paquetes = ["kdenlive"]
 categoria = "multimedia"
@@ -339,6 +402,8 @@ desktop = "org.kde.kdenlive"
 
 [[app]]
 id = "shotcut"
+icono = "\U000F0381"
+color = "#2E86C1"
 nombre = "Shotcut"
 paquetes = ["shotcut"]
 categoria = "multimedia"
@@ -349,6 +414,8 @@ desktop = "org.shotcut.Shotcut"
 
 [[app]]
 id = "audacity"
+icono = "\U000F036C"
+color = "#3D6FD9"
 nombre = "Audacity"
 paquetes = ["audacity"]
 categoria = "multimedia"
@@ -361,6 +428,8 @@ desktop = "audacity"
 
 [[app]]
 id = "steam"
+icono = "\U0000F1B6"
+color = "#2A475E"
 nombre = "Steam"
 paquetes = ["steam"]
 categoria = "juegos"
@@ -374,6 +443,8 @@ desktop = "steam"
 
 [[app]]
 id = "vscode"
+icono = "\U000F0A1E"
+color = "#007ACC"
 nombre = "Visual Studio Code"
 paquetes = ["visual-studio-code-bin"]
 categoria = "desarrollo"
@@ -385,6 +456,8 @@ desktop = "code"
 
 [[app]]
 id = "git"
+icono = "\U000F02A2"
+color = "#F05032"
 nombre = "Git"
 paquetes = ["git"]
 categoria = "desarrollo"
@@ -395,6 +468,8 @@ quitar = false
 
 [[app]]
 id = "lazygit"
+icono = "\U000F02A2"
+color = "#E8663D"
 nombre = "Lazygit"
 paquetes = ["lazygit"]
 categoria = "desarrollo"
@@ -404,6 +479,8 @@ etiquetas = ["git", "terminal", "tui"]
 
 [[app]]
 id = "docker"
+icono = "\U0000F308"
+color = "#2496ED"
 nombre = "Docker"
 paquetes = ["docker", "docker-compose"]
 categoria = "desarrollo"
@@ -413,6 +490,8 @@ etiquetas = ["contenedores", "containers", "devops", "compose"]
 
 [[app]]
 id = "lazydocker"
+icono = "\U0000F308"
+color = "#1B7AC4"
 nombre = "Lazydocker"
 paquetes = ["lazydocker"]
 categoria = "desarrollo"
@@ -424,6 +503,8 @@ etiquetas = ["docker", "contenedores", "terminal", "tui"]
 
 [[app]]
 id = "fastfetch"
+icono = "\U000F02FD"
+color = "#7AA2F7"
 nombre = "Fastfetch"
 paquetes = ["fastfetch"]
 categoria = "utilidades"
@@ -433,6 +514,8 @@ etiquetas = ["sistema", "info", "neofetch", "system"]
 
 [[app]]
 id = "htop"
+icono = "\U000F029A"
+color = "#3FA34D"
 nombre = "htop"
 paquetes = ["htop"]
 categoria = "utilidades"
@@ -443,6 +526,8 @@ desktop = "htop"
 
 [[app]]
 id = "nwg-look"
+icono = "\U000F08B5"
+color = "#8F5BD1"
 nombre = "nwg-look"
 paquetes = ["nwg-look"]
 categoria = "utilidades"
@@ -455,6 +540,8 @@ desktop = "nwg-look"
 
 [[app]]
 id = "chrome"
+icono = "\U0000F268"
+color = "#4285F4"
 nombre = "Google Chrome"
 paquetes = ["google-chrome"]
 categoria = "internet"
@@ -465,6 +552,8 @@ desktop = "google-chrome"
 
 [[app]]
 id = "brave"
+icono = "\U000F0498"
+color = "#FB542B"
 nombre = "Brave"
 paquetes = ["brave-bin"]
 categoria = "internet"
@@ -475,6 +564,8 @@ desktop = "brave-browser"
 
 [[app]]
 id = "heroic"
+icono = "\U000F0297"
+color = "#5C6BC0"
 nombre = "Heroic Games Launcher"
 paquetes = ["heroic-games-launcher-bin"]
 categoria = "juegos"
@@ -485,6 +576,8 @@ desktop = "heroic"
 
 [[app]]
 id = "cursor"
+icono = "\U000F018D"
+color = "#6E6E6E"
 nombre = "Cursor"
 paquetes = ["cursor-bin"]
 categoria = "desarrollo"
@@ -498,6 +591,8 @@ desktop = "cursor"
 
 [[app]]
 id = "onlyoffice"
+icono = "\U000F0219"
+color = "#FF6F3D"
 nombre = "ONLYOFFICE"
 paquetes = ["onlyoffice-bin"]
 fuente = "aur"
@@ -510,6 +605,8 @@ desktop = "onlyoffice-desktopeditors"
 
 [[app]]
 id = "genoffice"
+icono = "\U000F0219"
+color = "#6C5CE7"
 nombre = "genOffice"
 paquetes = ["genoffice-bin"]
 fuente = "aur"
@@ -520,6 +617,8 @@ etiquetas = ["office", "documentos", "ia", "ai", "pdf", "markdown"]
 
 [[app]]
 id = "blockbench"
+icono = "\U000F01A7"
+color = "#29B6F6"
 nombre = "Blockbench"
 paquetes = ["blockbench-bin"]
 fuente = "aur"
@@ -530,6 +629,8 @@ etiquetas = ["3d", "minecraft", "low poly", "modelado", "voxel"]
 
 [[app]]
 id = "slack"
+icono = "\U000F04B1"
+color = "#611F69"
 nombre = "Slack"
 paquetes = ["slack-desktop"]
 fuente = "aur"
@@ -541,6 +642,8 @@ desktop = "slack"
 
 [[app]]
 id = "zoom"
+icono = "\U000F0567"
+color = "#0B5CFF"
 nombre = "Zoom"
 paquetes = ["zoom"]
 fuente = "aur"
@@ -552,6 +655,8 @@ recomendada = true
 
 [[app]]
 id = "vesktop"
+icono = "\U000F066F"
+color = "#5865F2"
 nombre = "Vesktop"
 paquetes = ["vesktop-bin"]
 fuente = "aur"
@@ -562,6 +667,8 @@ etiquetas = ["discord", "chat", "voz", "gaming"]
 
 [[app]]
 id = "stremio"
+icono = "\U000F0381"
+color = "#7B5BF5"
 nombre = "Stremio"
 paquetes = ["stremio"]
 fuente = "aur"
@@ -573,6 +680,8 @@ recomendada = true
 
 [[app]]
 id = "postman"
+icono = "\U000F109B"
+color = "#FF6C37"
 nombre = "Postman"
 paquetes = ["postman-bin"]
 fuente = "aur"
@@ -583,6 +692,8 @@ etiquetas = ["api", "http", "rest", "desarrollo", "developer"]
 
 [[app]]
 id = "etcher"
+icono = "\U000F0553"
+color = "#26B6C9"
 nombre = "balenaEtcher"
 paquetes = ["balena-etcher"]
 fuente = "aur"

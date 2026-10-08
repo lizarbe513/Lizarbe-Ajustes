@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use lizarbe_core::i18n::{Lang, lang};
+use lizarbe_core::theme;
 use lizarbe_core::ui::fold;
 use serde::Deserialize;
 
@@ -27,6 +28,7 @@ impl Texto {
 pub struct Categoria {
     pub id: String,
     pub icono: String,
+    pub color: Option<String>,
     pub nombre: Texto,
 }
 
@@ -49,6 +51,13 @@ impl Fuente {
     }
 }
 
+fn rgb(s: &str) -> Option<(u8, u8, u8)> {
+    match theme::hex(s)? {
+        ratatui::style::Color::Rgb(r, g, b) => Some((r, g, b)),
+        _ => None,
+    }
+}
+
 fn si() -> bool {
     true
 }
@@ -59,6 +68,10 @@ pub struct App {
     pub nombre: String,
     pub paquetes: Vec<String>,
     pub categoria: String,
+    /// Carácter de Nerd Font; sin él se usa el de la categoría.
+    pub icono: Option<String>,
+    /// `#rrggbb` de la marca; sin él se usa el de la categoría.
+    pub color: Option<String>,
     #[serde(default)]
     pub fuente: Fuente,
     pub resumen: Texto,
@@ -122,6 +135,29 @@ impl Catalogo {
             .any(|a| a.fuente == fuente && a.categoria == self.categorias[i].id)
     }
 
+    /// Icono de la app o, si no tiene, el de su categoría.
+    pub fn icono_de(&self, a: &App) -> String {
+        a.icono
+            .clone()
+            .or_else(|| {
+                self.categoria(&a.categoria)
+                    .map(|i| self.categorias[i].icono.clone())
+            })
+            .unwrap_or_else(|| "?".into())
+    }
+
+    /// Color de la app o, si no tiene, el de su categoría (gris si ninguno es válido).
+    pub fn color_de(&self, a: &App) -> (u8, u8, u8) {
+        let cat = self
+            .categoria(&a.categoria)
+            .and_then(|i| self.categorias[i].color.as_deref());
+        a.color
+            .as_deref()
+            .and_then(rgb)
+            .or_else(|| cat.and_then(rgb))
+            .unwrap_or((122, 122, 122))
+    }
+
     pub fn categoria(&self, id: &str) -> Option<usize> {
         self.categorias.iter().position(|c| c.id == id)
     }
@@ -130,6 +166,9 @@ impl Catalogo {
         let mut out = vec![];
         let mut ids = HashSet::new();
         for c in &self.categorias {
+            if c.color.as_deref().is_some_and(|x| rgb(x).is_none()) {
+                out.push(format!("categoría {}: color no válido", c.id));
+            }
             if !ids.insert(format!("cat:{}", c.id)) {
                 out.push(format!("categoría repetida: {}", c.id));
             }
@@ -138,6 +177,12 @@ impl Catalogo {
         for a in &self.apps {
             if !apps.insert(a.id.as_str()) {
                 out.push(format!("app repetida: {}", a.id));
+            }
+            if a.icono.as_deref().is_some_and(|i| i.chars().count() != 1) {
+                out.push(format!("{}: el icono debe ser un solo carácter", a.id));
+            }
+            if a.color.as_deref().is_some_and(|c| rgb(c).is_none()) {
+                out.push(format!("{}: color no válido", a.id));
             }
             if self.categoria(&a.categoria).is_none() {
                 out.push(format!("{}: categoría desconocida «{}»", a.id, a.categoria));
@@ -172,6 +217,56 @@ mod tests {
         for f in [Fuente::Repos, Fuente::Aur] {
             assert!(c.apps.iter().any(|a| a.fuente == f && a.recomendada));
         }
+    }
+
+    #[test]
+    fn every_app_has_its_own_icon_and_a_valid_color() {
+        let c = Catalogo::embebido();
+        for a in &c.apps {
+            assert!(a.icono.is_some(), "{} sin icono", a.id);
+            assert!(a.color.is_some(), "{} sin color", a.id);
+            assert_ne!(c.color_de(a), (122, 122, 122), "{}", a.id);
+        }
+        for cat in &c.categorias {
+            assert!(cat.color.is_some(), "categoría {} sin color", cat.id);
+        }
+    }
+
+    #[test]
+    fn falls_back_to_category_icon_and_color() {
+        let mut c = Catalogo::embebido();
+        let i = c.app("firefox").unwrap();
+        c.apps[i].icono = None;
+        c.apps[i].color = None;
+        let cat = c.categoria(&c.apps[i].categoria).unwrap();
+        assert_eq!(c.icono_de(&c.apps[i]), c.categorias[cat].icono);
+        assert_eq!(c.color_de(&c.apps[i]), rgb("#4285F4").unwrap());
+    }
+
+    #[test]
+    fn rejects_bad_icon_and_color() {
+        let base = r#"
+[[categoria]]
+id = "x"
+icono = "i"
+nombre = { es = "X", en = "X" }
+"#;
+        let app = |extra: &str| {
+            format!(
+                "{base}[[app]]\nid = \"a\"\nnombre = \"N\"\npaquetes = [\"p\"]\ncategoria = \"x\"\n{extra}\nresumen = {{ es = \"a\", en = \"a\" }}\ndescripcion = {{ es = \"a\", en = \"a\" }}\n"
+            )
+        };
+        assert!(Catalogo::parse(&app("color = \"#112233\"\nicono = \"x\"")).is_ok());
+        assert!(
+            Catalogo::parse(&app("color = \"rojo\""))
+                .unwrap_err()
+                .contains("color")
+        );
+        assert!(
+            Catalogo::parse(&app("icono = \"ab\""))
+                .unwrap_err()
+                .contains("icono")
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant};
 
 use lizarbe_core::mouse::{self, Clicks, Mouse};
-use lizarbe_core::term::{Command, TuiApp};
+use lizarbe_core::term::{CANCELLED, Command, TuiApp};
 use lizarbe_core::theme::Palette;
 use lizarbe_core::ui::fold;
 use ratatui::Frame;
@@ -336,7 +336,10 @@ impl App {
     }
 
     fn avanzado(&mut self) {
-        self.pendiente = Some((sistema::avanzado(self.fuente), Tarea::Avanzado));
+        self.pendiente = Some((
+            sistema::avanzado(self.fuente, &self.consulta),
+            Tarea::Avanzado,
+        ));
     }
 
     fn key_modal(&mut self, key: KeyEvent) {
@@ -508,6 +511,13 @@ impl TuiApp for App {
         self.infos.clear();
         let ok = matches!(result, Ok(true));
         match (tarea, result) {
+            (Tarea::Instalar(_), Err(e)) if e == CANCELLED => {
+                self.avisar(t("msg.cancelled_install"), false)
+            }
+            (Tarea::Quitar(_), Err(e)) if e == CANCELLED => {
+                self.avisar(t("msg.cancelled_remove"), false)
+            }
+            (_, Err(e)) if e == CANCELLED => {}
             (_, Err(e)) => self.avisar(e, false),
             (Tarea::Instalar(apps), _) => {
                 let hechas = apps.iter().filter(|a| self.instalada(**a)).count();
@@ -533,6 +543,10 @@ impl TuiApp for App {
 
     fn should_quit(&self) -> bool {
         self.salir
+    }
+
+    fn esc_cancels(&self) -> bool {
+        true
     }
 }
 

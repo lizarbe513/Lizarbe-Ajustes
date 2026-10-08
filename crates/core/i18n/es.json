@@ -32,6 +32,7 @@
   "err.float": "Escribe un número (p. ej. 0.85).",
   "err.int": "Escribe un número entero.",
   "err.range": "Debe estar entre {min} y {max}.",
+  "exec.esc_hint": "Esc cancela y vuelve a {app}",
   "exec.press_enter": "Pulsa Enter para volver a {app}… ",
   "ft.all": "todos",
   "ft.back": "volver",

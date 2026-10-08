@@ -129,12 +129,35 @@ pub fn quitar(paquetes: &[String]) -> Command {
     cmd("sudo", a)
 }
 
-/// El buscador de paquetes de siempre (fzf).
-pub fn avanzado(fuente: Fuente) -> Command {
-    match fuente {
-        Fuente::Repos => cmd("omarchy-pkg-install", vec![]),
-        Fuente::Aur => cmd("omarchy-pkg-aur-install", vec![]),
+/// Solo letras, números y `. _ + -` (y espacios): lo justo para un nombre de paquete.
+fn sanear(consulta: &str) -> String {
+    let limpio: String = consulta
+        .chars()
+        .filter(|c| c.is_alphanumeric() || " ._+-".contains(*c))
+        .collect();
+    limpio.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// Busca en todos los paquetes de la fuente con el fzf de Omarchy; si hay
+/// texto en la búsqueda de la tienda, se abre ya filtrado con él.
+pub fn avanzado(fuente: Fuente, consulta: &str) -> Command {
+    let programa = match fuente {
+        Fuente::Repos => "omarchy-pkg-install",
+        Fuente::Aur => "omarchy-pkg-aur-install",
+    };
+    let q = sanear(consulta);
+    if q.is_empty() {
+        return cmd(programa, vec![]);
     }
+    let previo = std::env::var("FZF_DEFAULT_OPTS").unwrap_or_default();
+    let opciones = format!("{previo} --query='{q}'");
+    cmd(
+        "env",
+        vec![
+            format!("FZF_DEFAULT_OPTS={}", opciones.trim()),
+            programa.into(),
+        ],
+    )
 }
 
 /// ¿Existe el lanzador `<desktop>.desktop` en alguna carpeta de aplicaciones?
@@ -204,8 +227,25 @@ mod tests {
         assert_eq!(c.program, "yay");
         assert_eq!(c.args, ["-S", "--needed", "--noconfirm", "aur/a"]);
         assert_eq!(quitar(&["a".into()]).args[1], "-Rns");
-        assert_eq!(avanzado(Fuente::Repos).program, "omarchy-pkg-install");
-        assert_eq!(avanzado(Fuente::Aur).program, "omarchy-pkg-aur-install");
+        assert_eq!(avanzado(Fuente::Repos, "").program, "omarchy-pkg-install");
+        assert_eq!(
+            avanzado(Fuente::Aur, " ").program,
+            "omarchy-pkg-aur-install"
+        );
+        let c = avanzado(Fuente::Repos, "video");
+        assert_eq!(c.program, "env");
+        assert!(c.args[0].ends_with("--query='video'"));
+        assert_eq!(c.args[1], "omarchy-pkg-install");
+    }
+
+    #[test]
+    fn search_text_is_sanitized_before_reaching_fzf() {
+        assert_eq!(sanear("  edit   video "), "edit video");
+        assert_eq!(sanear("a'; rm -rf / #$(x)"), "a rm -rf x");
+        assert_eq!(sanear("música"), "música");
+        let c = avanzado(Fuente::Aur, "x' --exec 'y");
+        assert!(!c.args[0].contains("''"), "{:?}", c.args);
+        assert!(c.args[0].ends_with("--query='x --exec y'"), "{:?}", c.args);
     }
 
     #[test]
@@ -219,6 +259,26 @@ mod tests {
         assert!(e.ofrecida(&v(&["c"]), Fuente::Aur));
         assert!(e.instalada(&v(&["b"])));
         assert!(!e.instalada(&v(&["a", "b"])));
+    }
+
+    /// Mantenimiento: cada icono del catálogo existe en alguna fuente Nerd Font instalada.
+    #[test]
+    #[ignore]
+    fn catalog_icons_exist_in_nerd_font() {
+        let falta: Vec<String> = Catalogo::embebido()
+            .apps
+            .iter()
+            .filter_map(|a| a.icono.as_ref().map(|i| (a.id.clone(), i.clone())))
+            .filter(|(_, i)| {
+                let cp = i.chars().next().unwrap() as u32;
+                !salida("fc-list", &[&format!(":charset={cp:x}"), "family"]).contains("Nerd")
+            })
+            .map(|(id, _)| id)
+            .collect();
+        assert!(
+            falta.is_empty(),
+            "icono ausente en la fuente Nerd Font: {falta:?}"
+        );
     }
 
     /// Mantenimiento (necesita internet): cada paquete del catálogo debe existir en su fuente.
