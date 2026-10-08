@@ -262,5 +262,20 @@
   "w.settings": "Ajustes",
   "hint.close": "Cierra Widgets (pregunta si hay cambios sin aplicar)",
   "ft.search": "buscar",
-  "help.search": "Buscar una opción"
+  "help.search": "Buscar una opción",
+  "sec.notifications": "Notificaciones",
+  "sec.notifications.desc": "Cómo se muestran los avisos del sistema y de tus aplicaciones.",
+  "notif.header": "Avisos",
+  "notif.dnd": "No molestar",
+  "notif.dnd.desc": "Silencia los avisos que aparecen en pantalla. Se siguen guardando en el historial.",
+  "notif.header_who": "Quién muestra los avisos",
+  "notif.swaync": "Dejar que swaync muestre avisos",
+  "notif.swaync.desc": "Apagado, solo los muestra el shell de Omarchy (estilo Quickshell). Encendido, swaync puede ganarles el puesto y algunos avisos saldrán con otro aspecto.",
+  "notif.owner_unknown": "No se pudo comprobar qué programa muestra los avisos ahora.",
+  "notif.owner_shell": "Ahora los muestra el shell de Omarchy (Quickshell).",
+  "notif.owner_other": "Ahora los muestra «{name}», no el shell de Omarchy: por eso se ven distintos.",
+  "notif.warn_swaync": "swaync puede arrancar y mezclar estilos. Apaga esta opción y aplica para que todos los avisos usen el estilo de Omarchy.",
+  "notif.tip": "El tiempo en pantalla y el aspecto de cada aviso los fija Omarchy y no se pueden cambiar desde aquí.",
+  "restore.notifications": "Restaurar las notificaciones",
+  "restore.notifications.desc": "Vuelven los valores recomendados: sin «No molestar» y con swaync bloqueado para que todos los avisos usen el estilo de Omarchy."
 }

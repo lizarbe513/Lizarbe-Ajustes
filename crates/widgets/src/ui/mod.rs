@@ -122,7 +122,12 @@ const CATEGORIES: [(&str, &[Section]); 3] = [
     ("cat.bar", &[Section::Bar, Section::Widgets]),
     (
         "cat.system",
-        &[Section::Plugins, Section::Idle, Section::Appearance],
+        &[
+            Section::Plugins,
+            Section::Idle,
+            Section::Notifications,
+            Section::Appearance,
+        ],
     ),
     ("cat.review", &[Section::Changes]),
 ];
@@ -355,5 +360,23 @@ mod tests {
         app.on_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
         app.on_key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL));
         assert!(matches!(app.popup, Some(Popup::Picker(_))));
+    }
+
+    #[test]
+    fn notifications_section_draws_and_is_reachable_by_id() {
+        let (_d, mut app) = app();
+        assert_eq!(
+            Section::from_id("notificaciones"),
+            Some(Section::Notifications)
+        );
+        app.go_section(Section::Notifications);
+        let text = render(&mut app, 120, 36).join("\n");
+        for needle in [
+            "NOTIFICACIONES",
+            "No molestar",
+            "Dejar que swaync muestre avisos",
+        ] {
+            assert!(text.contains(needle), "falta {needle}\n{text}");
+        }
     }
 }

@@ -262,5 +262,20 @@
   "w.settings": "Settings",
   "hint.close": "Close Widgets (asks if there are unapplied changes)",
   "ft.search": "search",
-  "help.search": "Find an option"
+  "help.search": "Find an option",
+  "sec.notifications": "Notifications",
+  "sec.notifications.desc": "How system and application notices are shown.",
+  "notif.header": "Notices",
+  "notif.dnd": "Do not disturb",
+  "notif.dnd.desc": "Silences the notices shown on screen. They are still kept in the history.",
+  "notif.header_who": "What shows the notices",
+  "notif.swaync": "Let swaync show notices",
+  "notif.swaync.desc": "Off, only the Omarchy shell (Quickshell style) shows them. On, swaync may win the spot and some notices will look different.",
+  "notif.owner_unknown": "Could not check which program shows notices right now.",
+  "notif.owner_shell": "Right now the Omarchy shell (Quickshell) shows them.",
+  "notif.owner_other": "Right now \"{name}\" shows them, not the Omarchy shell: that is why they look different.",
+  "notif.warn_swaync": "swaync can start and mix styles. Turn this off and apply so every notice uses the Omarchy style.",
+  "notif.tip": "How long a notice stays and how it looks are set by Omarchy and cannot be changed from here.",
+  "restore.notifications": "Restore notifications",
+  "restore.notifications.desc": "The recommended values return: no \"Do not disturb\" and swaync blocked so every notice uses the Omarchy style."
 }

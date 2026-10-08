@@ -36,6 +36,25 @@ impl Paths {
         }
     }
 
+    /// Estado de las notificaciones (No molestar); en pruebas, en la carpeta de pruebas.
+    pub fn notifications_json(&self) -> PathBuf {
+        if self.sandbox {
+            self.config_dir.join("notifications.json")
+        } else {
+            lizarbe_core::paths::state_home().join("omarchy/notifications.json")
+        }
+    }
+
+    /// Servicio D-Bus de usuario que impide que swaync tome las notificaciones.
+    pub fn dbus_override(&self) -> PathBuf {
+        if self.sandbox {
+            self.config_dir.join("dbus-notifications.service")
+        } else {
+            lizarbe_core::paths::home()
+                .join(".local/share/dbus-1/services/org.freedesktop.Notifications.service")
+        }
+    }
+
     pub fn shell_json(&self) -> PathBuf {
         self.config_dir.join("shell.json")
     }

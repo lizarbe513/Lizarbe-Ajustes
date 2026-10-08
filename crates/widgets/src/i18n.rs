@@ -55,7 +55,7 @@ mod tests {
 
     /// Prefijos de claves que se arman en tiempo de ejecución.
     const DYNAMIC: &[&str] = &[
-        "ap.", "bar.", "col.", "cw.", "day.", "idle.", "pos.", "restore.",
+        "ap.", "bar.", "col.", "cw.", "day.", "idle.", "notif.", "pos.", "restore.",
     ];
 
     #[test]

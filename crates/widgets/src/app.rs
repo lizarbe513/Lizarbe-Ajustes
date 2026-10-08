@@ -42,16 +42,18 @@ pub enum Section {
     Widgets,
     Plugins,
     Idle,
+    Notifications,
     Appearance,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 6] = [
+    pub const ALL: [Section; 7] = [
         Section::Bar,
         Section::Widgets,
         Section::Plugins,
         Section::Idle,
+        Section::Notifications,
         Section::Appearance,
         Section::Changes,
     ];
@@ -66,6 +68,7 @@ impl Section {
             Section::Widgets => "󰕮",
             Section::Plugins => "󰐱",
             Section::Idle => "󰒲",
+            Section::Notifications => "󰂚",
             Section::Appearance => "󰏘",
             Section::Changes => "󰄬",
         }
@@ -77,6 +80,7 @@ impl Section {
             Section::Widgets => "sec.widgets.desc",
             Section::Plugins => "sec.plugins.desc",
             Section::Idle => "sec.idle.desc",
+            Section::Notifications => "sec.notifications.desc",
             Section::Appearance => "sec.appearance.desc",
             Section::Changes => "sec.changes.desc",
         })
@@ -89,6 +93,7 @@ impl Section {
             "widgets" => Section::Widgets,
             "plugins" => Section::Plugins,
             "idle" | "inactividad" => Section::Idle,
+            "notifications" | "notificaciones" | "notif" => Section::Notifications,
             "appearance" | "apariencia" => Section::Appearance,
             "changes" | "cambios" => Section::Changes,
             _ => return None,
@@ -101,6 +106,7 @@ impl Section {
             Section::Widgets => "sec.widgets",
             Section::Plugins => "sec.plugins",
             Section::Idle => "sec.idle",
+            Section::Notifications => "sec.notifications",
             Section::Appearance => "sec.appearance",
             Section::Changes => "sec.changes",
         })
@@ -233,7 +239,7 @@ pub struct App {
     /// Botón resaltado cuando el foco está en la fila de botones.
     pub button: usize,
     pub advanced: bool,
-    pub forms: [FormState; 6],
+    pub forms: [FormState; Section::ALL.len()],
     pub widgets: WidgetsView,
     pub plugins: PluginsView,
     pub popup: Option<Popup>,
@@ -348,6 +354,7 @@ impl App {
             },
             Section::Plugins => vec![],
             Section::Idle => self.idle_rows(),
+            Section::Notifications => self.notification_rows(),
             Section::Appearance => self.appearance_rows(),
             Section::Changes => self.changes_rows(),
         }
@@ -469,6 +476,32 @@ impl App {
             }
             _ => self.store.paths.bar_modules().join(format!("{id}.qml")),
         }
+    }
+
+    /// Notificaciones: No molestar y qué programa las muestra.
+    fn notification_rows(&self) -> Vec<Row> {
+        let field = |key: &str, default: bool| {
+            FieldDef::new(key, t(&format!("notif.{key}")), Kind::Bool)
+                .desc(t(&format!("notif.{key}.desc")))
+                .default(json!(default))
+        };
+        let mut rows = vec![Row::Header(t("notif.header"))];
+        self.push_fields(&mut rows, vec![field("dnd", false)], |_| Bind::Notif("dnd"));
+        rows.push(Row::Header(t("notif.header_who")));
+        self.push_fields(&mut rows, vec![field("swaync", false)], |_| {
+            Bind::Notif("swaync")
+        });
+        let (text, kind) = match self.store.notif_owner.as_deref() {
+            None => (t("notif.owner_unknown"), NoteKind::Info),
+            Some("quickshell") => (t("notif.owner_shell"), NoteKind::Info),
+            Some(other) => (tf("notif.owner_other", &[("name", other)]), NoteKind::Warn),
+        };
+        rows.push(Row::Note(text, kind));
+        if self.store.notif.swaync {
+            rows.push(Row::Note(t("notif.warn_swaync"), NoteKind::Warn));
+        }
+        rows.push(Row::Note(t("notif.tip"), NoteKind::Info));
+        rows
     }
 
     fn idle_rows(&self) -> Vec<Row> {
@@ -738,7 +771,7 @@ impl App {
                 };
                 return;
             }
-            KeyCode::Char(c @ '1'..='6') => {
+            KeyCode::Char(c @ '1'..='7') => {
                 self.go_section(Section::ALL[c as usize - '1' as usize]);
                 return;
             }
@@ -805,6 +838,7 @@ impl App {
             },
             Section::Plugins => (Scope::Plugins, "restore.plugins"),
             Section::Idle => (Scope::Idle, "restore.idle"),
+            Section::Notifications => (Scope::Notifications, "restore.notifications"),
             Section::Appearance if self.advanced => {
                 (Scope::Appearance { all: true }, "restore.appearance_all")
             }
@@ -827,6 +861,7 @@ impl App {
             let rows = match s {
                 Section::Bar => self.bar_rows(),
                 Section::Idle => self.idle_rows(),
+                Section::Notifications => self.notification_rows(),
                 Section::Appearance => self.appearance_rows(),
                 _ => continue,
             };
@@ -2114,7 +2149,7 @@ fn help_content() -> HelpContent {
                 vec![
                     ("Tab / ⇧+Tab".into(), t("help.focus")),
                     ("Esc".into(), t("help.back")),
-                    ("1-6".into(), t("help.jump")),
+                    (format!("1-{}", Section::ALL.len()), t("help.jump")),
                     ("↑↓ / j k".into(), t("help.nav")),
                     ("← → / h l".into(), t("help.change")),
                     (format!("Enter / {}", t("key.space")), t("help.activate")),

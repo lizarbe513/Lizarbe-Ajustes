@@ -1,6 +1,7 @@
 pub mod catalog;
 pub mod curated;
 pub mod ipc;
+pub mod notify;
 pub mod paths;
 pub mod qt_format;
 pub mod schema;

@@ -143,6 +143,7 @@ fn draw_form(f: &mut Frame, app: &mut App, area: Rect, focused: bool) {
                 match &fr.bind {
                     Bind::Json(p) => sj::path_to_string(p),
                     Bind::Toml(s, k) => format!("{s}.{k}"),
+                    Bind::Notif(k) => format!("notificaciones.{k}"),
                 },
                 t("help.default"),
                 fr.def

@@ -8,7 +8,7 @@
 | Aplicación | Binario | En el menú de Omarchy |
 | :--- | :--- | :--- |
 | **Escritorio** | `lizarbe-escritorio` | Configuración › Pantallas, Atajos de teclado, Teclado, Luz nocturna, Capturas, Atajos de texto, Idioma, Inicio automático · Apariencia › Hyprland |
-| **Widgets** | `lizarbe-widgets` | Apariencia › Widgets y barra · Configuración › Plugins |
+| **Widgets** | `lizarbe-widgets` | Apariencia › Widgets y barra · Configuración › Plugins, Notificaciones |
 | **Estudio de temas** | `lizarbe-temas` | Apariencia › Crear tema |
 | **Tienda** | `lizarbe-tienda` | Instalar › Paquete y Instalar › AUR (misma pantalla; cambia solo la fuente) |
 
@@ -61,6 +61,7 @@ La barra y el shell **Quickshell**:
 | **Widgets** | Vista previa de la barra; añadir, quitar y mover widgets (teclado o arrastre); ajustes de cada widget. En avanzado: módulos de **comando** o **QML** y claves crudas. |
 | **Plugins** | Activar/desactivar, instalar desde git, personalizar, actualizar y eliminar (vía `omarchy plugin`). |
 | **Inactividad** | Tiempo hasta el salvapantallas y el bloqueo. |
+| **Notificaciones** | **No molestar** y si **swaync** puede mostrar avisos. Con swaync bloqueado, todos los avisos salen con el estilo de Omarchy (Quickshell); si swaync arranca primero, algunos salen con otro aspecto. El tiempo en pantalla y el aspecto los fija Omarchy. |
 | **Apariencia** | Tamaño de letra, escala, tamaños y opacidades; en avanzado, todas las claves del `shell.toml` del tema. |
 | **Cambios** | Lista de lo que vas a cambiar. |
 
@@ -157,6 +158,8 @@ cambias con la app abierta.
 | `~/.config/hypr/autostart.lua`, `~/.XCompose`, `~/.config/hypr/hyprsunset.conf` | Escritorio | Inicio, atajos de texto, luz nocturna. |
 | `~/.config/uwsm/env` | Escritorio | Solo el bloque `# >>> lizarbe capturas`. |
 | `~/.config/omarchy/shell.json`, `shell.toml` | Widgets | Barra, widgets, plugins, inactividad y apariencia. |
+| `~/.local/state/omarchy/notifications.json` | Widgets | Solo la clave `dnd` (No molestar); el resto se conserva. |
+| `~/.local/share/dbus-1/services/org.freedesktop.Notifications.service` | Widgets | Bloqueo de swaync (y `systemctl --user mask swaync.service`). Se quita al volver a permitirlo. |
 | `~/.config/omarchy/themes/<tema>/` | Estudio | Temas propios. |
 | `~/.config/lizarbe/ajustes.toml` | Todas | Preferencias compartidas (idioma, modo). |
 | `~/.local/state/lizarbe/backups/` | Todas | Copias de seguridad antes de cada cambio. |
@@ -206,7 +209,7 @@ Four TUI apps (three to configure [Omarchy](https://omarchy.org) without editing
   mouse, cursor, keybindings (recorded), autostart, night light, compose sequences, language and
   **screenshots** (folder, capture key, mode, save/copy, editor). Saves only what you change in
   `~/.config/hypr/escritorio.lua`, with backups and automatic rollback if Hyprland reports an error.
-- **Widgets** (`lizarbe-widgets`): the Quickshell bar, widgets, plugins, idle and appearance.
+- **Widgets** (`lizarbe-widgets`): the Quickshell bar, widgets, plugins, idle, notifications (Do not disturb; keep swaync from mixing styles) and appearance.
 - **Theme studio** (`lizarbe-temas`): create and edit complete Omarchy themes with a live mock-up,
   palettes generated from an accent or a wallpaper, wallpapers, icons, editors and bar colors, and
   a **try on the desktop** mode that reverts after 20 s unless confirmed.

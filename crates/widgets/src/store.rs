@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use toml_edit::DocumentMut;
 
 use crate::omarchy::catalog::{Catalog, Plugin};
+use crate::omarchy::notify::{self, Notif};
 use crate::omarchy::paths::Paths;
 use crate::omarchy::shell_json::{self as sj, Seg, key};
 use crate::omarchy::shell_toml::{self as st, ThemeToml};
@@ -21,6 +22,8 @@ use crate::omarchy::{ipc, schema};
 pub enum Bind {
     Json(Vec<Seg>),
     Toml(String, String),
+    /// Notificaciones: `"dnd"` (No molestar) o `"swaync"` (puede arrancar).
+    Notif(&'static str),
 }
 
 /// Operaciones que se delegan a `omarchy plugin …` al aplicar (plugins
@@ -51,6 +54,8 @@ pub enum Scope {
     /// Componentes de Omarchy desactivados y barra alternativa.
     Plugins,
     Idle,
+    /// Notificaciones: sin No molestar y con swaync bloqueado.
+    Notifications,
     /// Apariencia: solo las claves principales o todo `shell.toml`.
     Appearance {
         all: bool,
@@ -89,6 +94,11 @@ pub struct Store {
     toml_raw: Option<String>,
     pub toml_error: Option<String>,
     pub ops: Vec<PluginOp>,
+    /// Notificaciones (No molestar y si swaync puede arrancar).
+    pub notif: Notif,
+    notif_orig: Notif,
+    /// Programa que tiene las notificaciones ahora (`quickshell`, `swaync`…).
+    pub notif_owner: Option<String>,
 }
 
 impl FieldStore<Bind> for Store {
@@ -128,6 +138,9 @@ impl Store {
             toml_raw: None,
             toml_error: None,
             ops: vec![],
+            notif: Notif::default(),
+            notif_orig: Notif::default(),
+            notif_owner: None,
             paths,
         };
         s.reload();
@@ -169,6 +182,14 @@ impl Store {
         };
         self.toml_orig = self.toml.to_string();
         self.ops.clear();
+
+        self.notif_orig = notify::load(&self.paths);
+        self.notif = self.notif_orig.clone();
+        self.notif_owner = if self.paths.sandbox {
+            None
+        } else {
+            notify::owner()
+        };
     }
 
     /// Devuelve una parte de la configuración a los valores de fábrica de
@@ -224,6 +245,7 @@ impl Store {
                 }
                 None => sj::remove(&mut self.json, &[key("idle")]),
             },
+            Scope::Notifications => self.notif = Notif::default(),
             Scope::Appearance { all } => {
                 let keys: Vec<(String, String)> = if *all {
                     toml_pairs(&self.toml)
@@ -243,6 +265,7 @@ impl Store {
             Scope::All => {
                 self.json = d;
                 self.ops.clear();
+                self.notif = Notif::default();
                 self.restore(&Scope::Appearance { all: true });
             }
         }
@@ -267,14 +290,19 @@ impl Store {
         self.toml.to_string() != self.toml_orig
     }
 
+    pub fn notif_dirty(&self) -> bool {
+        self.notif != self.notif_orig
+    }
+
     pub fn dirty(&self) -> bool {
-        self.json_dirty() || self.toml_dirty() || !self.ops.is_empty()
+        self.json_dirty() || self.toml_dirty() || !self.ops.is_empty() || self.notif_dirty()
     }
 
     pub fn discard(&mut self) {
         self.json = self.json_orig.clone();
         self.toml = self.toml_orig.parse().unwrap_or_default();
         self.ops.clear();
+        self.notif = self.notif_orig.clone();
     }
 
     // ------------------------------------------------------------ valores
@@ -283,6 +311,10 @@ impl Store {
         match bind {
             Bind::Json(p) => sj::get(&self.json, p).cloned(),
             Bind::Toml(s, k) => st::user_get(&self.toml, s, k),
+            Bind::Notif(k) => Some(json!(match *k {
+                "dnd" => self.notif.dnd,
+                _ => self.notif.swaync,
+            })),
         }
     }
 
@@ -296,6 +328,13 @@ impl Store {
                 sj::set(&mut self.json, p, value);
             }
             Bind::Toml(s, k) => st::user_set(&mut self.toml, s, k, &value),
+            Bind::Notif(k) => {
+                let on = value.as_bool().unwrap_or(false);
+                match *k {
+                    "dnd" => self.notif.dnd = on,
+                    _ => self.notif.swaync = on,
+                }
+            }
         }
     }
 
@@ -308,6 +347,10 @@ impl Store {
                 .parse::<DocumentMut>()
                 .ok()
                 .and_then(|d| st::user_get(&d, s, k)),
+            Bind::Notif(k) => Some(json!(match *k {
+                "dnd" => self.notif_orig.dnd,
+                _ => self.notif_orig.swaync,
+            })),
         }
     }
 
@@ -324,6 +367,11 @@ impl Store {
         match bind {
             Bind::Json(p) => sj::remove(&mut self.json, p),
             Bind::Toml(s, k) => st::user_unset(&mut self.toml, s, k),
+            // Sin valor propio: vuelve a lo recomendado (sin No molestar y swaync bloqueado).
+            Bind::Notif(k) => match *k {
+                "dnd" => self.notif.dnd = false,
+                _ => self.notif.swaync = false,
+            },
         }
     }
 
@@ -455,6 +503,23 @@ impl Store {
         diff_json("", &self.json_orig, &self.json, &mut out);
         let orig: DocumentMut = self.toml_orig.parse().unwrap_or_default();
         diff_toml(&orig, &self.toml, &mut out);
+        let yn = |b: bool| Some(if b { "sí" } else { "no" }.to_string());
+        if self.notif.dnd != self.notif_orig.dnd {
+            out.push(Change {
+                file: "notifications.json",
+                path: "dnd".into(),
+                old: yn(self.notif_orig.dnd),
+                new: yn(self.notif.dnd),
+            });
+        }
+        if self.notif.swaync != self.notif_orig.swaync {
+            out.push(Change {
+                file: "servicio D-Bus",
+                path: "swaync".into(),
+                old: yn(self.notif_orig.swaync),
+                new: yn(self.notif.swaync),
+            });
+        }
         out
     }
 
@@ -470,6 +535,29 @@ impl Store {
         out
     }
 
+    /// Escribe No molestar y bloquea o libera swaync. Los archivos van dentro
+    /// de la transacción (copia de seguridad); lo de systemd y el shell, después.
+    fn apply_notif(&mut self, tx: &mut Transaction, report: &mut ApplyReport) -> Result<()> {
+        if self.notif.dnd != self.notif_orig.dnd {
+            let file = notify::settings_file(&self.paths);
+            let text = notify::render_settings(read(&file).as_deref(), self.notif.dnd);
+            tx.write(&file, &text)?;
+            if !self.paths.sandbox && ipc::shell_running() {
+                // El shell ya guardó su estado; solo se pide que lo cambie en vivo.
+                if let Err(e) = notify::apply_dnd(self.notif.dnd) {
+                    report.errors.push(e);
+                }
+            }
+        }
+        if self.notif.swaync != self.notif_orig.swaync {
+            notify::write_override(&self.paths, !self.notif.swaync)?;
+            report
+                .errors
+                .extend(notify::set_unit(&self.paths, !self.notif.swaync));
+        }
+        Ok(())
+    }
+
     pub fn apply(&mut self) -> Result<ApplyReport> {
         let mut report = ApplyReport::default();
         std::fs::create_dir_all(&self.paths.config_dir)
@@ -481,6 +569,9 @@ impl Store {
         }
         if self.toml_dirty() {
             tx.write(&self.paths.shell_toml(), &self.toml.to_string())?;
+        }
+        if self.notif_dirty() {
+            self.apply_notif(&mut tx, &mut report)?;
         }
         report.backups = tx.commit(30);
 
@@ -744,6 +835,43 @@ mod tests {
         s.set(&Bind::Json(vec![key("idle"), key("lock")]), json!(900));
         s.restore(&Scope::Idle);
         assert_eq!(s.json["idle"], json!({"screensaver": 150, "lock": 300}));
+    }
+
+    #[test]
+    fn notification_settings_apply_to_files_and_can_be_undone() {
+        let (d, mut s) = sandbox();
+        let settings = d.path().join("notifications.json");
+        let svc = d.path().join("dbus-notifications.service");
+        assert!(s.notif.swaync && !s.notif.dnd && !s.dirty());
+        // Bloquear swaync y activar No molestar.
+        s.set(&Bind::Notif("swaync"), json!(false));
+        s.set(&Bind::Notif("dnd"), json!(true));
+        assert!(s.dirty());
+        let kinds: Vec<_> = s.changes().into_iter().map(|c| c.path).collect();
+        assert_eq!(kinds, vec!["dnd", "swaync"]);
+        s.apply().unwrap();
+        assert!(svc.exists());
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(v["dnd"], json!(true));
+        assert!(!s.dirty() && s.notif.dnd && !s.notif.swaync);
+        // Volver atrás: se quita el bloqueo y No molestar.
+        s.set(&Bind::Notif("swaync"), json!(true));
+        s.set(&Bind::Notif("dnd"), json!(false));
+        s.apply().unwrap();
+        assert!(!svc.exists());
+        let v: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+        assert_eq!(v["dnd"], json!(false));
+    }
+
+    #[test]
+    fn notification_restore_and_discard() {
+        let (_d, mut s) = sandbox();
+        s.set(&Bind::Notif("dnd"), json!(true));
+        s.discard();
+        assert!(!s.dirty());
+        s.restore(&Scope::Notifications);
+        // Lo recomendado es bloquear swaync: es un cambio pendiente.
+        assert!(!s.notif.swaync && s.dirty());
     }
 
     #[test]
