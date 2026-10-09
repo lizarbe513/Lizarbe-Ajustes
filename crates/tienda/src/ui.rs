@@ -137,7 +137,7 @@ impl App {
 
     fn dibujar_vistas(&mut self, f: &mut Frame, r: Rect) {
         let pal = self.pal.clone();
-        let buscando = !self.consulta.trim().is_empty();
+        let buscando = !self.busqueda_activa().is_empty();
         for (i, v) in self.vistas.clone().into_iter().enumerate() {
             let y = r.y + i as u16;
             if y >= r.bottom() {
@@ -176,10 +176,10 @@ impl App {
             self.scroll = self.fila + 1 - h;
         }
         if visibles.is_empty() {
-            let msg = if self.consulta.trim().is_empty() {
+            let msg = if self.busqueda_activa().is_empty() {
                 t("list.empty")
             } else {
-                crate::i18n::tf("list.no_results", &[("q", self.consulta.trim())])
+                crate::i18n::tf("list.no_results", &[("q", self.busqueda_activa())])
             };
             put(
                 f,
@@ -190,7 +190,7 @@ impl App {
                     fg(pal.muted),
                 )],
             );
-            if !self.consulta.trim().is_empty() {
+            if !self.busqueda_activa().is_empty() {
                 put(
                     f,
                     r.x + 2,
@@ -233,7 +233,7 @@ impl App {
     /// Título de la sección sobre las tarjetas.
     fn dibujar_encabezado(&self, f: &mut Frame, r: Rect, n: usize) {
         let pal = &self.pal;
-        let q = self.consulta.trim();
+        let q = self.busqueda_activa();
         let texto = if !q.is_empty() {
             crate::i18n::tf("section.results", &[("q", q), ("n", &n.to_string())])
         } else {

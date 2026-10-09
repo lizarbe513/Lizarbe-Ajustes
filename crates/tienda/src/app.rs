@@ -176,7 +176,12 @@ impl App {
     /// Busca en todo el repositorio y añade los paquetes como tarjetas.
     fn buscar_remoto(&mut self) {
         let q = self.consulta.trim().to_string();
-        if q.is_empty() || self.modo == Modo::Quitar {
+        if q.is_empty() {
+            return;
+        }
+        if self.modo == Modo::Quitar {
+            self.buscada = self.consulta.clone();
+            self.fila = 0;
             return;
         }
         self.cat.apps.truncate(self.base);
@@ -223,12 +228,22 @@ impl App {
 
     pub fn buscar(&mut self, texto: &str) {
         self.consulta = texto.to_string();
+        self.buscada = self.consulta.clone();
         self.fila = 0;
+    }
+
+    /// Texto de la búsqueda ya confirmada con Enter; vacío mientras se escribe.
+    pub fn busqueda_activa(&self) -> &str {
+        if !self.buscada.is_empty() && self.buscada == self.consulta {
+            self.consulta.trim()
+        } else {
+            ""
+        }
     }
 
     /// Índices de las apps que se muestran ahora.
     pub fn visibles(&self) -> Vec<usize> {
-        let q = fold(&self.consulta);
+        let q = fold(self.busqueda_activa());
         let vista = self.vistas[self.vista];
         let quitando = self.modo == Modo::Quitar;
         let remotos = !self.buscada.is_empty() && self.buscada == self.consulta;
@@ -722,12 +737,15 @@ mod tests {
         let mut a = app();
         tecla(&mut a, KeyCode::Char('/'));
         assert_eq!(a.foco, Foco::Busqueda);
+        let antes = a.visibles().len();
         for c in "video".chars() {
             tecla(&mut a, KeyCode::Char(c));
         }
+        assert_eq!(a.visibles().len(), antes, "escribir no filtra");
+        let antes = a.visibles().len();
         tecla(&mut a, KeyCode::Enter);
         assert_eq!(a.foco, Foco::Lista);
-        assert!(!a.visibles().is_empty());
+        assert_eq!(a.busqueda_activa(), "video");
     }
 
     #[test]
