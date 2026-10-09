@@ -92,52 +92,10 @@ pub fn version_instalada(paquete: &str) -> Option<String> {
 
 // ---------------------------------------------------------------- teléfono
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Estado {
-    Vinculado,
-    Solicitado,
-    Nuevo,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Telefono {
-    pub id: String,
-    pub nombre: String,
-    pub estado: Estado,
-    pub alcanzable: bool,
-}
-
-/// Interpreta `kdeconnect-cli -l`: `- Nombre: id (paired and reachable)`.
-pub fn parse_telefonos(texto: &str) -> Vec<Telefono> {
-    texto
-        .lines()
-        .filter_map(|l| {
-            let l = l.trim().strip_prefix("- ")?;
-            let (nombre, resto) = l.split_once(": ")?;
-            let (id, estado) = resto.split_once(" (")?;
-            let estado = estado.trim_end_matches(')');
-            let vinculado = estado.contains("paired") && !estado.contains("not paired");
-            Some(Telefono {
-                id: id.trim().to_string(),
-                nombre: nombre.trim().to_string(),
-                estado: if vinculado {
-                    Estado::Vinculado
-                } else if estado.contains("requested") {
-                    Estado::Solicitado
-                } else {
-                    Estado::Nuevo
-                },
-                alcanzable: estado.contains("reachable") && !estado.contains("unreachable"),
-            })
-        })
-        .collect()
-}
+pub use lizarbe_core::kdeconnect::{Estado, Telefono};
 
 pub fn telefonos() -> Vec<Telefono> {
-    salida("kdeconnect-cli", &["--refresh", "-l"])
-        .or_else(|| salida("kdeconnect-cli", &["-l"]))
-        .map(|t| parse_telefonos(&t))
-        .unwrap_or_default()
+    lizarbe_core::kdeconnect::telefonos(true).unwrap_or_default()
 }
 
 pub fn kdeconnect_instalado() -> bool {
@@ -337,31 +295,6 @@ mod tests {
             ]
         );
         assert!(parse_actualizaciones("").is_empty());
-    }
-
-    #[test]
-    fn phones_are_read_from_kdeconnect() {
-        let out = "- Galaxy A06: 8f7de10c (paired and reachable)\n- iPhone de Ana: abc123 (reachable)\n- Viejo: zz9 (paired)\n- Pidiendo: p1 (pairing requested)\n- Raro: r2 (not paired)\n1 device found\n";
-        let t = parse_telefonos(out);
-        assert_eq!(t.len(), 5);
-        assert_eq!(
-            (t[0].estado.clone(), t[0].alcanzable),
-            (Estado::Vinculado, true)
-        );
-        assert_eq!(t[0].nombre, "Galaxy A06");
-        assert_eq!(
-            (t[1].estado.clone(), t[1].alcanzable),
-            (Estado::Nuevo, true)
-        );
-        assert_eq!(
-            (t[2].estado.clone(), t[2].alcanzable),
-            (Estado::Vinculado, false)
-        );
-        assert_eq!(t[3].estado, Estado::Solicitado);
-        assert_eq!(
-            (t[4].estado.clone(), t[4].alcanzable),
-            (Estado::Nuevo, false)
-        );
     }
 
     #[test]

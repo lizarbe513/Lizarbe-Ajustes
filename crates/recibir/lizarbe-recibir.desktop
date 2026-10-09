@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Recibir archivos
+Name[en]=Receive files
+GenericName=Recibir archivos del teléfono
+GenericName[en]=Receive files from your phone
+Comment=Recibe archivos de tu teléfono con KDE Connect
+Comment[en]=Receive files from your phone with KDE Connect
+Exec=omarchy-launch-tui --app-id=org.omarchy.lizarbe-recibir lizarbe-recibir
+Icon=phone
+Terminal=false
+Type=Application
+Categories=Network;Utility;
+Keywords=recibir;receive;kdeconnect;telefono;phone;archivos;files;compartir;share;lizarbe;tui;

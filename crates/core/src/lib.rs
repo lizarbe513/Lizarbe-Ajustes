@@ -14,6 +14,7 @@ pub mod hypr;
 pub mod hypr_events;
 pub mod i18n;
 pub mod ipc;
+pub mod kdeconnect;
 pub mod modal;
 pub mod mouse;
 pub mod paths;

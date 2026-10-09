@@ -7,6 +7,7 @@
   - `crates/temas`: Estudio de temas, crea y edita temas completos de Omarchy (`lizarbe-temas`).
   - `crates/tienda`: Tienda de aplicaciones (`lizarbe-tienda`).
   - `crates/bienvenida`: Bienvenida de primer inicio con practica en vivo (`lizarbe-bienvenida`).
+  - `crates/recibir`: ventana para recibir archivos del telefono con KDE Connect (`lizarbe-recibir`).
 - Lo que sirva a mas de una app va en `crates/core`; lo especifico de cada app, en su crate.
 
 # Herramientas de desarrollo:

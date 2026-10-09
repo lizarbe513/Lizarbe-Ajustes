@@ -12,6 +12,7 @@
 | **Estudio de temas** | `lizarbe-temas` | Apariencia › Crear tema |
 | **Tienda** | `lizarbe-tienda` | Instalar › Paquete y Instalar › AUR (misma pantalla; cambia solo la fuente) |
 | **Bienvenida** | `lizarbe-bienvenida` | Aprender › Bienvenida (y sola, una vez, en el primer inicio de un usuario nuevo) |
+| **Recibir** | `lizarbe-recibir` | Compartir › Recibir (archivos del teléfono con KDE Connect) |
 
 *[English below](#english)*
 
@@ -228,6 +229,7 @@ Los paquetes se construyen y publican desde
 - `crates/temas/` — borrador del tema, maqueta, paletas (acento y k-means), imágenes y pruebas en vivo.
 - `crates/tienda/` — catálogo curado (`catalogo.toml`), consultas a pacman y la interfaz de la tienda.
 - `crates/bienvenida/` — capítulos, práctica en vivo (`retos`), QR, terminal de prueba, animaciones y marca.
+- `crates/recibir/` — la ventana de Recibir: el celular, el estado de KDE Connect y los archivos que llegan.
   El núcleo aporta `hypr_events` (eventos de Hyprland), `ansi` (colores ANSI → ratatui) y `frame_interval`.
 
 ### Estilo visual

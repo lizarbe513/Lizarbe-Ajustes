@@ -1,0 +1,17 @@
+[package]
+name = "lizarbe-recibir"
+description = "Recibir archivos del teléfono con KDE Connect: ventana que explica el envío y avisa de lo que llega"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+
+[dependencies]
+lizarbe-core.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+ratatui.workspace = true
+unicode-width.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
