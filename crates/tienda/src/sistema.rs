@@ -77,6 +77,121 @@ impl Info {
     }
 }
 
+/// Un paquete sin entrada en el catálogo (resultado de búsqueda o ya instalado).
+#[derive(Debug, Default, Clone, PartialEq)]
+pub struct Encontrado {
+    pub nombre: String,
+    pub version: String,
+    pub descripcion: String,
+    pub repo: String,
+}
+
+/// Paquetes que Omarchy o el sistema necesitan: no se ofrecen para quitar.
+pub fn protegido(nombre: &str) -> bool {
+    nombre.starts_with("omarchy")
+        || nombre.starts_with("lizarbe")
+        || [
+            "base",
+            "linux",
+            "linux-firmware",
+            "pacman",
+            "yay",
+            "sudo",
+            "hyprland",
+        ]
+        .contains(&nombre)
+}
+
+/// Salida de `pacman -Ss` / `yay -Ssa`: `repo/nombre versión …` y la descripción debajo.
+pub fn parse_busqueda(text: &str) -> Vec<Encontrado> {
+    let mut out: Vec<Encontrado> = vec![];
+    for l in text.lines() {
+        if l.starts_with(char::is_whitespace) {
+            if let Some(p) = out.last_mut() {
+                p.descripcion = l.trim().to_string();
+            }
+        } else if let Some((repo, resto)) = l.split_once('/') {
+            let mut w = resto.split_whitespace();
+            if let Some(nombre) = w.next() {
+                out.push(Encontrado {
+                    nombre: nombre.into(),
+                    version: w.next().unwrap_or_default().into(),
+                    descripcion: String::new(),
+                    repo: repo.into(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Busca en todo el repositorio de la fuente; los mejores nombres van primero.
+pub fn buscar_repo(consulta: &str, fuente: Fuente) -> Vec<Encontrado> {
+    let q = sanear(consulta);
+    if q.is_empty() {
+        return vec![];
+    }
+    let palabras: Vec<&str> = q.split(' ').collect();
+    let mut args: Vec<&str> = match fuente {
+        Fuente::Repos => vec!["-Ss"],
+        Fuente::Aur => vec!["-Ssa", "--topdown"],
+    };
+    args.extend(palabras.iter().copied());
+    let programa = if fuente == Fuente::Aur {
+        "yay"
+    } else {
+        "pacman"
+    };
+    let mut r = parse_busqueda(&salida(programa, &args));
+    let ql = q.to_lowercase();
+    r.sort_by_key(|p| {
+        let n = p.nombre.to_lowercase();
+        if n == ql {
+            0
+        } else if n.starts_with(&ql) {
+            1
+        } else if n.contains(&ql) {
+            2
+        } else {
+            3
+        }
+    });
+    r.truncate(200);
+    r
+}
+
+/// Paquetes instalados a propósito (los que lista `omarchy-pkg-remove`), con su descripción.
+pub fn instalados_explicitos() -> Vec<Encontrado> {
+    let foraneos = lineas(&salida("pacman", &["-Qmq"]));
+    let mut out = vec![];
+    for bloque in salida("pacman", &["-Qi"]).split("\n\n") {
+        let (mut p, mut explicito) = (Encontrado::default(), false);
+        for l in bloque.lines() {
+            let Some((k, v)) = l.split_once(':') else {
+                continue;
+            };
+            let v = v.trim();
+            match k.trim() {
+                "Name" => p.nombre = v.into(),
+                "Version" => p.version = v.into(),
+                "Description" => p.descripcion = v.into(),
+                "Install Reason" => explicito = v.starts_with("Explicitly"),
+                _ => {}
+            }
+        }
+        if explicito && !p.nombre.is_empty() {
+            p.repo = if foraneos.contains(&p.nombre) {
+                "aur"
+            } else {
+                ""
+            }
+            .into();
+            out.push(p);
+        }
+    }
+    out
+}
+
 fn lineas(text: &str) -> HashSet<String> {
     text.lines()
         .map(str::trim)
@@ -140,10 +255,11 @@ fn sanear(consulta: &str) -> String {
 
 /// Busca en todos los paquetes de la fuente con el fzf de Omarchy; si hay
 /// texto en la búsqueda de la tienda, se abre ya filtrado con él.
-pub fn avanzado(fuente: Fuente, consulta: &str) -> Command {
-    let programa = match fuente {
-        Fuente::Repos => "omarchy-pkg-install",
-        Fuente::Aur => "omarchy-pkg-aur-install",
+pub fn avanzado(fuente: Fuente, consulta: &str, quitar: bool) -> Command {
+    let programa = match (quitar, fuente) {
+        (true, _) => "omarchy-pkg-remove",
+        (false, Fuente::Repos) => "omarchy-pkg-install",
+        (false, Fuente::Aur) => "omarchy-pkg-aur-install",
     };
     let q = sanear(consulta);
     if q.is_empty() {
@@ -227,12 +343,15 @@ mod tests {
         assert_eq!(c.program, "yay");
         assert_eq!(c.args, ["-S", "--needed", "--noconfirm", "aur/a"]);
         assert_eq!(quitar(&["a".into()]).args[1], "-Rns");
-        assert_eq!(avanzado(Fuente::Repos, "").program, "omarchy-pkg-install");
         assert_eq!(
-            avanzado(Fuente::Aur, " ").program,
+            avanzado(Fuente::Repos, "", false).program,
+            "omarchy-pkg-install"
+        );
+        assert_eq!(
+            avanzado(Fuente::Aur, " ", false).program,
             "omarchy-pkg-aur-install"
         );
-        let c = avanzado(Fuente::Repos, "video");
+        let c = avanzado(Fuente::Repos, "video", false);
         assert_eq!(c.program, "env");
         assert!(c.args[0].ends_with("--query='video'"));
         assert_eq!(c.args[1], "omarchy-pkg-install");
@@ -243,9 +362,30 @@ mod tests {
         assert_eq!(sanear("  edit   video "), "edit video");
         assert_eq!(sanear("a'; rm -rf / #$(x)"), "a rm -rf x");
         assert_eq!(sanear("música"), "música");
-        let c = avanzado(Fuente::Aur, "x' --exec 'y");
+        let c = avanzado(Fuente::Aur, "x' --exec 'y", false);
         assert!(!c.args[0].contains("''"), "{:?}", c.args);
         assert!(c.args[0].ends_with("--query='x --exec y'"), "{:?}", c.args);
+    }
+
+    #[test]
+    fn parses_search_results() {
+        let txt = "extra/gimp 3.0.4-1 (gimp-group) [installed]\n    GNU Image Manipulation Program\naur/gimp-git 1.0-1 (+10 0.5)\n    Git build\n";
+        let r = parse_busqueda(txt);
+        assert_eq!(r.len(), 2);
+        assert_eq!(r[0].nombre, "gimp");
+        assert_eq!(r[0].repo, "extra");
+        assert_eq!(r[0].version, "3.0.4-1");
+        assert_eq!(r[0].descripcion, "GNU Image Manipulation Program");
+        assert_eq!(r[1].repo, "aur");
+    }
+
+    #[test]
+    fn removal_uses_the_omarchy_remover_when_advanced() {
+        assert_eq!(
+            avanzado(Fuente::Repos, "", true).program,
+            "omarchy-pkg-remove"
+        );
+        assert!(protegido("omarchy-nvim") && !protegido("gimp"));
     }
 
     #[test]

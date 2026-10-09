@@ -20,6 +20,14 @@ pub enum Vista {
     Recomendadas,
     Cat(usize),
     Instaladas,
+    /// Solo al quitar: lo instalado que no está en el catálogo.
+    Otros,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Modo {
+    Instalar,
+    Quitar,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,7 +53,7 @@ pub enum Foco {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Tarea {
     Instalar(Vec<usize>),
-    Quitar(usize),
+    Quitar(Vec<usize>),
     Avanzado,
     Salir,
 }
@@ -60,6 +68,11 @@ pub struct Modal {
 pub struct App {
     pub cat: Catalogo,
     pub fuente: Fuente,
+    pub modo: Modo,
+    /// Cuántas apps son del catálogo; las siguientes son resultados o instalados.
+    base: usize,
+    /// Búsqueda cuyos resultados del repositorio están cargados.
+    pub buscada: String,
     pub estado: Estado,
     pub pal: Palette,
     pub vistas: Vec<Vista>,
@@ -89,9 +102,13 @@ impl App {
                 .map(Vista::Cat),
         );
         vistas.push(Vista::Instaladas);
+        let base = cat.apps.len();
         App {
             cat,
             fuente,
+            modo: Modo::Instalar,
+            base,
+            buscada: String::new(),
             estado,
             pal,
             vistas,
@@ -111,6 +128,74 @@ impl App {
             pendiente: None,
             salir: false,
         }
+    }
+
+    /// Pasa al modo quitar: solo lo instalado, con lo que no es del catálogo como tarjetas.
+    pub fn modo_quitar(&mut self, instalados: Vec<sistema::Encontrado>) {
+        self.modo = Modo::Quitar;
+        self.cat.apps.truncate(self.base);
+        let conocidos: std::collections::HashSet<String> = self
+            .cat
+            .apps
+            .iter()
+            .flat_map(|a| a.paquetes.iter().cloned())
+            .collect();
+        for p in instalados.iter().filter(|p| !conocidos.contains(&p.nombre)) {
+            let fuente = if p.repo == "aur" {
+                Fuente::Aur
+            } else {
+                Fuente::Repos
+            };
+            let quitar = !sistema::protegido(&p.nombre);
+            self.cat
+                .apps
+                .push(crate::catalogo::App::de_paquete(p, fuente, quitar));
+        }
+        let mut vistas = vec![Vista::Instaladas];
+        if self.cat.apps.len() > self.base {
+            vistas.push(Vista::Otros);
+        }
+        vistas.extend(
+            (0..self.cat.categorias.len())
+                .filter(|i| {
+                    self.cat.apps[..self.base]
+                        .iter()
+                        .any(|a| a.categoria == self.cat.categorias[*i].id && self.instalada_app(a))
+                })
+                .map(Vista::Cat),
+        );
+        self.vistas = vistas;
+        self.vista = 0;
+        self.fila = 0;
+    }
+
+    fn instalada_app(&self, a: &crate::catalogo::App) -> bool {
+        self.estado.instalada(&a.paquetes)
+    }
+
+    /// Busca en todo el repositorio y añade los paquetes como tarjetas.
+    fn buscar_remoto(&mut self) {
+        let q = self.consulta.trim().to_string();
+        if q.is_empty() || self.modo == Modo::Quitar {
+            return;
+        }
+        self.cat.apps.truncate(self.base);
+        self.marcadas.retain(|a| *a < self.base);
+        let conocidos: std::collections::HashSet<&String> = self.cat.apps[..self.base]
+            .iter()
+            .filter(|a| a.fuente == self.fuente)
+            .flat_map(|a| a.paquetes.iter())
+            .collect();
+        let nuevas: Vec<_> = sistema::buscar_repo(&q, self.fuente)
+            .into_iter()
+            .filter(|p| !conocidos.contains(&p.nombre))
+            .map(|p| {
+                crate::catalogo::App::de_paquete(&p, self.fuente, !sistema::protegido(&p.nombre))
+            })
+            .collect();
+        self.cat.apps.extend(nuevas);
+        self.buscada = self.consulta.clone();
+        self.fila = 0;
     }
 
     /// Abre en la categoría `id` (o en «recomendadas» / «instaladas»).
@@ -145,20 +230,30 @@ impl App {
     pub fn visibles(&self) -> Vec<usize> {
         let q = fold(&self.consulta);
         let vista = self.vistas[self.vista];
+        let quitando = self.modo == Modo::Quitar;
+        let remotos = !self.buscada.is_empty() && self.buscada == self.consulta;
         self.cat
             .apps
             .iter()
             .enumerate()
-            .filter(|(_, a)| a.fuente == self.fuente)
-            .filter(|(_, a)| self.estado.ofrecida(&a.paquetes, a.fuente))
+            .filter(|(_, a)| {
+                if quitando {
+                    self.estado.instalada(&a.paquetes)
+                } else if a.externa {
+                    remotos
+                } else {
+                    a.fuente == self.fuente && self.estado.ofrecida(&a.paquetes, a.fuente)
+                }
+            })
             .filter(|(_, a)| {
                 if !q.trim().is_empty() {
-                    return a.coincide(&q);
+                    return (a.externa && remotos && !quitando) || a.coincide(&q);
                 }
                 match vista {
                     Vista::Recomendadas => a.recomendada,
                     Vista::Cat(i) => a.categoria == self.cat.categorias[i].id,
                     Vista::Instaladas => self.estado.instalada(&a.paquetes),
+                    Vista::Otros => a.externa,
                 }
             })
             .map(|(i, _)| i)
@@ -210,7 +305,13 @@ impl App {
 
     fn marcar(&mut self) {
         let Some(a) = self.actual() else { return };
-        if self.instalada(a) {
+        if self.modo == Modo::Quitar {
+            if !self.cat.apps[a].quitar {
+                self.avisar(t("msg.protected"), false);
+            } else if !self.marcadas.remove(&a) {
+                self.marcadas.insert(a);
+            }
+        } else if self.instalada(a) {
             self.avisar(t("msg.already"), false);
         } else if !self.marcadas.remove(&a) {
             self.marcadas.insert(a);
@@ -269,19 +370,40 @@ impl App {
     }
 
     fn pedir_quitar(&mut self) {
-        let Some(a) = self.actual() else { return };
-        if !self.instalada(a) {
-            return;
+        let mut objetivos: Vec<usize> = if self.modo == Modo::Quitar {
+            self.marcadas.iter().copied().collect()
+        } else {
+            vec![]
+        };
+        if objetivos.is_empty() {
+            let Some(a) = self.actual() else { return };
+            if !self.instalada(a) {
+                return;
+            }
+            if !self.cat.apps[a].quitar {
+                self.avisar(t("msg.protected"), false);
+                return;
+            }
+            objetivos.push(a);
         }
-        if !self.cat.apps[a].quitar {
-            self.avisar(t("msg.protected"), false);
-            return;
-        }
-        let nombre = self.cat.apps[a].nombre.clone();
+        let nombres: Vec<String> = objetivos
+            .iter()
+            .map(|a| self.cat.apps[*a].nombre.clone())
+            .collect();
+        let mut lineas = nombres.clone();
+        lineas.push(t("confirm.remove.body"));
+        let titulo = if nombres.len() == 1 {
+            tf("confirm.remove.title", &[("name", &nombres[0])])
+        } else {
+            tf(
+                "confirm.remove.title_n",
+                &[("n", &nombres.len().to_string())],
+            )
+        };
         self.modal = Some(Modal {
-            titulo: tf("confirm.remove.title", &[("name", &nombre)]),
-            lineas: vec![t("confirm.remove.body")],
-            tarea: Tarea::Quitar(a),
+            titulo,
+            lineas,
+            tarea: Tarea::Quitar(objetivos),
         });
     }
 
@@ -301,7 +423,7 @@ impl App {
     }
 
     fn salir_o_confirmar(&mut self) {
-        if self.marcadas.is_empty() {
+        if self.marcadas.is_empty() || self.modo == Modo::Quitar {
             self.salir = true;
         } else {
             self.modal = Some(Modal {
@@ -326,8 +448,11 @@ impl App {
                 }
                 self.pendiente = Some((sistema::instalar(&pkgs, self.fuente), m.tarea));
             }
-            Tarea::Quitar(a) => {
-                let pkgs = self.cat.apps[a].paquetes.clone();
+            Tarea::Quitar(ref apps) => {
+                let pkgs: Vec<String> = apps
+                    .iter()
+                    .flat_map(|a| self.cat.apps[*a].paquetes.clone())
+                    .collect();
                 self.pendiente = Some((sistema::quitar(&pkgs), m.tarea));
             }
             Tarea::Avanzado => {}
@@ -337,7 +462,7 @@ impl App {
 
     fn avanzado(&mut self) {
         self.pendiente = Some((
-            sistema::avanzado(self.fuente, &self.consulta),
+            sistema::avanzado(self.fuente, &self.consulta, self.modo == Modo::Quitar),
             Tarea::Avanzado,
         ));
     }
@@ -356,7 +481,11 @@ impl App {
                 self.consulta.clear();
                 self.foco = Foco::Lista;
             }
-            KeyCode::Enter | KeyCode::Down | KeyCode::Tab => self.foco = Foco::Lista,
+            KeyCode::Enter => {
+                self.buscar_remoto();
+                self.foco = Foco::Lista;
+            }
+            KeyCode::Down | KeyCode::Tab => self.foco = Foco::Lista,
             KeyCode::Backspace => {
                 self.consulta.pop();
                 self.fila = 0;
@@ -429,7 +558,13 @@ impl TuiApp for App {
             // Con el foco en las categorías, Enter y Espacio entran a la lista.
             KeyCode::Enter | KeyCode::Char(' ') if en_vistas => self.foco = Foco::Lista,
             KeyCode::Char(' ') => self.marcar(),
-            KeyCode::Enter | KeyCode::Char('i') if !en_vistas => self.pedir_instalar(),
+            KeyCode::Enter | KeyCode::Char('i') if !en_vistas => {
+                if self.modo == Modo::Quitar {
+                    self.pedir_quitar()
+                } else {
+                    self.pedir_instalar()
+                }
+            }
             KeyCode::Char('x') | KeyCode::Delete if !en_vistas => self.pedir_quitar(),
             KeyCode::Char('o') if !en_vistas => self.abrir(),
             _ => {}
@@ -468,6 +603,7 @@ impl TuiApp for App {
                         self.foco = Foco::Lista;
                         if double {
                             match self.actual() {
+                                Some(_) if self.modo == Modo::Quitar => self.pedir_quitar(),
                                 Some(a) if self.instalada(a) => self.abrir(),
                                 Some(_) => self.pedir_instalar(),
                                 None => {}
@@ -529,9 +665,15 @@ impl TuiApp for App {
                     self.avisar(t("msg.failed"), false)
                 }
             }
-            (Tarea::Quitar(a), _) => {
+            (Tarea::Quitar(apps), _) => {
+                self.marcadas.clear();
                 if ok {
-                    let m = tf("msg.removed", &[("name", &self.cat.apps[a].nombre)]);
+                    let nombre = apps
+                        .iter()
+                        .map(|a| self.cat.apps[*a].nombre.clone())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let m = tf("msg.removed", &[("name", &nombre)]);
                     self.avisar(m, true)
                 } else {
                     self.avisar(t("msg.failed"), false)
@@ -573,6 +715,36 @@ mod tests {
         let mut k = KeyEvent::new(c, KeyModifiers::NONE);
         k.kind = KeyEventKind::Press;
         a.on_key(k);
+    }
+
+    #[test]
+    fn enter_in_search_keeps_catalog_matches_and_clears_with_esc() {
+        let mut a = app();
+        tecla(&mut a, KeyCode::Char('/'));
+        assert_eq!(a.foco, Foco::Busqueda);
+        for c in "video".chars() {
+            tecla(&mut a, KeyCode::Char(c));
+        }
+        tecla(&mut a, KeyCode::Enter);
+        assert_eq!(a.foco, Foco::Lista);
+        assert!(!a.visibles().is_empty());
+    }
+
+    #[test]
+    fn remove_mode_lists_only_installed_and_marks_many() {
+        let mut a = app();
+        a.estado.instalados.insert("zzz-extra".into());
+        a.modo_quitar(vec![sistema::Encontrado {
+            nombre: "zzz-extra".into(),
+            ..Default::default()
+        }]);
+        assert!(a.visibles().iter().all(|i| a.instalada(*i)));
+        let otros = a.vistas.iter().position(|v| *v == Vista::Otros).unwrap();
+        a.ir_vista(otros);
+        assert_eq!(a.visibles().len(), 1);
+        tecla(&mut a, KeyCode::Char(' '));
+        tecla(&mut a, KeyCode::Enter);
+        assert!(matches!(a.modal.as_ref().unwrap().tarea, Tarea::Quitar(ref v) if v.len() == 1));
     }
 
     #[test]

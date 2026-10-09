@@ -12,7 +12,7 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, BorderType, Borders};
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Foco, Hit, Vista};
+use crate::app::{App, Foco, Hit, Modo, Vista};
 use crate::catalogo::Fuente;
 use crate::i18n::t;
 
@@ -53,9 +53,10 @@ impl App {
     pub fn dibujar(&mut self, f: &mut Frame) {
         self.hits.clear();
         let pal = self.pal.clone();
-        let titulo = match self.fuente {
-            Fuente::Repos => t("title.repos"),
-            Fuente::Aur => t("title.aur"),
+        let titulo = match (self.modo, self.fuente) {
+            (Modo::Quitar, _) => t("title.remove"),
+            (_, Fuente::Repos) => t("title.repos"),
+            (_, Fuente::Aur) => t("title.aur"),
         };
         let inner = frame(f, &pal, f.area(), &titulo);
         if inner.width < 30 || inner.height < 8 {
@@ -126,6 +127,7 @@ impl App {
         match v {
             Vista::Recomendadas => ("󰓎".into(), t("cat.recomendadas")),
             Vista::Instaladas => ("󰄬".into(), t("cat.instaladas")),
+            Vista::Otros => ("󰏖".into(), t("cat.otros")),
             Vista::Cat(i) => {
                 let c = &self.cat.categorias[i];
                 (c.icono.clone(), c.nombre.get().to_string())
@@ -194,7 +196,10 @@ impl App {
                     r.x + 2,
                     r.y + 3,
                     vec![Span::styled(
-                        truncate(&t("list.try_advanced"), r.width as usize - 2),
+                        truncate(
+                            &crate::i18n::tf("list.try_advanced", &[("q", self.consulta.trim())]),
+                            r.width as usize - 2,
+                        ),
                         fg(pal.dim),
                     )],
                 );
@@ -261,7 +266,7 @@ impl App {
         let sel = pos == self.fila;
         let hover = self.hover == Some(Hit::Fila(pos));
         let estilo = row_style(&pal, hover, sel && self.foco != Foco::Vistas, true);
-        let (glifo, color) = if instalada {
+        let (glifo, color) = if instalada && !(self.modo == Modo::Quitar && marcada) {
             ("✓", pal.ok)
         } else if marcada {
             ("●", pal.accent)
@@ -322,7 +327,8 @@ impl App {
         let tx = inner.x + 1 + ANCHO_ICONO + 2;
         let tw = inner.right().saturating_sub(tx + 1) as usize;
 
-        let insignia = if self.instalada(a) {
+        let quitando = self.modo == Modo::Quitar;
+        let insignia = if self.instalada(a) && !(quitando && self.marcadas.contains(&a)) {
             Some((format!("✓ {}", t("detail.installed")), pal.ok))
         } else if self.marcadas.contains(&a) {
             Some((format!("● {}", t("card.marked")), pal.accent))
@@ -365,7 +371,7 @@ impl App {
             .cat
             .categoria(&app.categoria)
             .map(|i| self.cat.categorias[i].nombre.get().to_string())
-            .unwrap_or_default();
+            .unwrap_or_else(|| app.etiquetas.join(" · "));
         let mut etiquetas = vec![];
         if app.recomendada {
             etiquetas.push(Span::styled(
@@ -577,7 +583,11 @@ impl App {
             Foco::Lista => vec![
                 h("↑↓", "hint.move", 3),
                 h("␣", "hint.mark", 2),
-                h("⏎", "hint.install", 3),
+                if self.modo == Modo::Quitar {
+                    h("⏎", "hint.remove", 3)
+                } else {
+                    h("⏎", "hint.install", 3)
+                },
                 h("x", "hint.remove", 1),
                 h("/", "hint.search", 2),
                 h("a", "hint.advanced", 0),

@@ -83,9 +83,47 @@ pub struct App {
     pub desktop: Option<String>,
     #[serde(default = "si")]
     pub quitar: bool,
+    /// Paquete que no es del catálogo: viene de una búsqueda en el repositorio o de lo instalado.
+    #[serde(default)]
+    pub externa: bool,
 }
 
 impl App {
+    /// Tarjeta para un paquete cualquiera, con el aspecto de las del catálogo.
+    pub fn de_paquete(p: &crate::sistema::Encontrado, fuente: Fuente, quitar: bool) -> App {
+        let texto = Texto {
+            es: p.descripcion.clone(),
+            en: p.descripcion.clone(),
+        };
+        App {
+            id: format!("pkg:{}", p.nombre),
+            nombre: p.nombre.clone(),
+            paquetes: vec![p.nombre.clone()],
+            categoria: String::new(),
+            icono: Some("\u{f0d6}".into()),
+            color: Some(
+                if fuente == Fuente::Aur {
+                    "#8a7fb8"
+                } else {
+                    "#6f8fa8"
+                }
+                .into(),
+            ),
+            fuente,
+            resumen: texto.clone(),
+            descripcion: texto,
+            etiquetas: if p.repo.is_empty() {
+                vec![]
+            } else {
+                vec![p.repo.clone()]
+            },
+            recomendada: false,
+            desktop: None,
+            quitar,
+            externa: true,
+        }
+    }
+
     /// ¿Coincide con todas las palabras de `query` (ya normalizada con `fold`)?
     pub fn coincide(&self, query: &str) -> bool {
         let heno = fold(&format!(

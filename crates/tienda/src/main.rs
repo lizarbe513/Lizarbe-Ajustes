@@ -22,6 +22,7 @@ const OPTS: &[Opt] = &[
     Opt::value("--categoria", "<id>", "cli.cat"),
     Opt::value("--app", "<id>", "cli.app"),
     Opt::value("--buscar", "<texto>", "cli.search"),
+    Opt::flag("--quitar", "cli.quitar"),
 ];
 
 fn main() -> Result<()> {
@@ -32,6 +33,9 @@ fn main() -> Result<()> {
         Some(f) => Fuente::parse(f).unwrap_or_else(|| args.fail(&t("cli.bad_fuente"))),
     };
     let mut app = App::new(Catalogo::embebido(), Estado::cargar(), pal, fuente);
+    if args.has("--quitar") {
+        app.modo_quitar(sistema::instalados_explicitos());
+    }
     if let Some(c) = args.value("--categoria") {
         app.ir_a_categoria(c);
     }
