@@ -107,6 +107,18 @@ pub enum Act {
     CapShortcut,
     /// Ir a Atajos mostrando solo los que contienen este texto.
     OpenBinds(&'static str),
+    /// Sistema: elegir de una lista (navegador, energía…).
+    SysPick(crate::system::Pick),
+    /// Sistema: abrir un panel del shell de Omarchy.
+    SysPanel(&'static str),
+    /// Sistema: ejecutar una tarea en la terminal.
+    SysRun(crate::system::Task),
+    /// Sistema: elegir un cambio de Escritorio para deshacerlo.
+    UndoPick,
+    /// Sistema: abrir un programa gráfico aparte (programa, argumentos).
+    SysOpen(&'static str, &'static [&'static str]),
+    /// Ir a otra sección.
+    Goto(Section),
 }
 
 /// Qué recibe la combinación que se está grabando.
@@ -138,6 +150,10 @@ pub enum Confirm {
     RestoreAutostart,
     /// Importar los ajustes de Meca y retirarlo.
     MigrateMeca,
+    /// Ejecutar una tarea de Sistema en la terminal.
+    SysRun(crate::system::Task),
+    /// Deshacer un cambio aplicado (por su fecha).
+    Undo(String),
 }
 
 /// Cuadros de texto propios de Escritorio.
@@ -160,6 +176,10 @@ pub enum EPick {
     AutostartApp,
     /// Búsqueda de opciones: salta a la elegida.
     Search,
+    /// Sistema: el valor elegido se aplica al momento.
+    Sys(crate::system::Pick),
+    /// Cambio de Escritorio que se va a deshacer.
+    Undo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -224,6 +244,10 @@ pub struct App {
     last_check: Instant,
     palette_watch: lizarbe_core::theme::PaletteWatcher,
     clicks: mouse::Clicks<Hit>,
+    /// Estado de Sistema (se lee al entrar en la sección).
+    pub sys: Option<crate::system::State>,
+    /// Comando pendiente de ejecutar en la terminal.
+    command: Option<Command>,
 }
 
 impl App {
@@ -248,6 +272,8 @@ impl App {
             apps: OnceCell::new(),
             last_check: Instant::now(),
             clicks: mouse::Clicks::default(),
+            sys: None,
+            command: None,
         }
     }
 
@@ -273,6 +299,9 @@ impl App {
     pub fn tick(&mut self) {
         self.poll_record();
         self.palette_watch.poll(&mut self.pal);
+        if self.section == Section::System && self.sys.is_none() {
+            self.sys = Some(crate::system::State::load());
+        }
         if self
             .toast
             .as_ref()
@@ -314,6 +343,7 @@ impl App {
             Section::Autostart => self.autostart_rows(),
             Section::Compose => self.compose_rows(),
             Section::Screenshots => self.capture_rows(),
+            Section::System => self.system_rows(),
             s => self.settings_rows(s),
         }
     }
@@ -345,6 +375,110 @@ impl App {
         rows
     }
 
+    /// Sistema: estado de Omarchy, con cada valor como botón.
+    fn system_rows(&self) -> Vec<Row> {
+        use crate::system::{GAMING_MENU, PANELS, PRINTERS_APP, Pick, Printing, Snapper, Task};
+        let Some(sys) = &self.sys else {
+            return vec![Row::Note(t("sys.loading"), NoteKind::Info)];
+        };
+        let row = |p: Pick| {
+            let value = sys
+                .values
+                .get(&p)
+                .map(|v| p.label(v))
+                .unwrap_or_else(|| t("sys.unknown"));
+            Row::Action(
+                tf(
+                    "sys.row",
+                    &[
+                        ("name", &t(&format!("sys.pick.{}", p.id()))),
+                        ("value", &value),
+                    ],
+                ),
+                Act::SysPick(p),
+            )
+        };
+        let mut rows = vec![
+            Row::Note(t("sys.instant"), NoteKind::Info),
+            Row::Header(t("g.sys_defaults")),
+            row(Pick::Browser),
+            row(Pick::Terminal),
+            row(Pick::Editor),
+            Row::Header(t("g.sys_power")),
+            row(Pick::Power),
+            Row::Header(t("g.sys_font")),
+            row(Pick::Font),
+            Row::Header(t("g.sys_panels")),
+        ];
+        for (label, panel, keys) in PANELS {
+            rows.push(Row::Action(
+                tf(label, &[("keys", keys)]),
+                Act::SysPanel(panel),
+            ));
+        }
+        rows.push(Row::Header(t("g.sys_access")));
+        rows.push(row(Pick::TextSize));
+        rows.push(Row::Action(t("access.zoom"), Act::Goto(Section::Cursor)));
+        rows.push(Row::Header(t("g.sys_print")));
+        match sys.printing {
+            Printing::Missing => rows.push(Row::Note(t("print.missing"), NoteKind::Info)),
+            Printing::Disabled => {
+                rows.push(Row::Note(t("print.disabled"), NoteKind::Warn));
+                rows.push(Row::Action(
+                    t(Task::EnablePrinting.label()),
+                    Act::SysRun(Task::EnablePrinting),
+                ));
+            }
+            Printing::Ready => {
+                let (label, program, args) = PRINTERS_APP;
+                if lizarbe_core::ipc::command_exists(program) {
+                    rows.push(Row::Action(t(label), Act::SysOpen(program, args)));
+                } else {
+                    rows.push(Row::Note(t("print.no_app"), NoteKind::Info));
+                }
+            }
+        }
+        rows.push(Row::Header(t("g.sys_games")));
+        rows.push(Row::Note(t("games.d"), NoteKind::Info));
+        let (label, program, args) = GAMING_MENU;
+        rows.push(Row::Action(t(label), Act::SysOpen(program, args)));
+        rows.push(Row::Header(t("g.sys_repair")));
+        rows.push(Row::Note(t("sys.repair.d"), NoteKind::Info));
+        for task in Task::REPAIRS {
+            rows.push(Row::Action(t(task.label()), Act::SysRun(task)));
+        }
+        rows.push(Row::Header(t("g.sys_snapshots")));
+        match sys.snapper {
+            Snapper::Missing => rows.push(Row::Note(t("snap.missing"), NoteKind::Info)),
+            Snapper::Unconfigured => {
+                rows.push(Row::Note(t("snap.unconfigured"), NoteKind::Warn));
+                rows.push(Row::Action(
+                    t(Task::SnapperSetup.label()),
+                    Act::SysRun(Task::SnapperSetup),
+                ));
+            }
+            Snapper::Ready if sys.in_snapshot => {
+                rows.push(Row::Note(t("snap.in_snapshot"), NoteKind::Warn));
+                rows.push(Row::Action(
+                    t(Task::SnapshotRestore.label()),
+                    Act::SysRun(Task::SnapshotRestore),
+                ));
+            }
+            Snapper::Ready => {
+                rows.push(Row::Note(t("snap.ready"), NoteKind::Info));
+                rows.push(Row::Action(
+                    t(Task::SnapshotCreate.label()),
+                    Act::SysRun(Task::SnapshotCreate),
+                ));
+                rows.push(Row::Note(t("snap.how_restore"), NoteKind::Info));
+            }
+        }
+        rows.push(Row::Header(t("g.sys_undo")));
+        rows.push(Row::Note(t("undo.d"), NoteKind::Info));
+        rows.push(Row::Action(t("undo.pick"), Act::UndoPick));
+        rows
+    }
+
     fn settings_rows(&self, section: Section) -> Vec<Row> {
         let mut rows = vec![];
         if !self.store.live && !self.store.paths.sandbox {
@@ -364,6 +498,9 @@ impl App {
             if g.id == "monitors_all" {
                 if !self.store.global_scale_editable() {
                     rows.push(Row::Note(t("note.no_global_scale"), NoteKind::Info));
+                }
+                if self.store.gdk_change().is_some() {
+                    rows.push(Row::Note(t("note.gdk_mismatch"), NoteKind::Warn));
                 }
                 if self.store.ctx.monitors.is_empty() {
                     rows.push(Row::Note(t("note.no_monitors"), NoteKind::Info));
@@ -863,6 +1000,10 @@ impl App {
                     }
                     Confirm::Quit => self.quit = true,
                     Confirm::BindAssign { target, keys } => self.assign(target, keys),
+                    Confirm::SysRun(task) => {
+                        self.command = Some(task.command(&self.store.paths.omarchy_path));
+                    }
+                    Confirm::Undo(stamp) => self.undo(&stamp),
                     Confirm::MigrateMeca => match self.store.migrate_meca() {
                         Ok(r) => self.toast(
                             tf(
@@ -1311,10 +1452,18 @@ impl TuiApp for App {
     }
 
     fn take_command(&mut self) -> Option<Command> {
-        None
+        self.command.take()
     }
 
-    fn after_command(&mut self, _result: Result<bool, String>) {}
+    fn after_command(&mut self, result: Result<bool, String>) {
+        match result {
+            Ok(true) => self.toast(t("sys.done"), NoteKind::Info),
+            Ok(false) => self.toast(t("sys.failed"), NoteKind::Warn),
+            Err(e) if e == lizarbe_core::term::CANCELLED => {}
+            Err(e) => self.toast(e, NoteKind::Warn),
+        }
+        self.sys = None;
+    }
 
     fn should_quit(&self) -> bool {
         self.quit

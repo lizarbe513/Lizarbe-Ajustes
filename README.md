@@ -34,6 +34,7 @@ Hyprland sin editar archivos:
 | **Atajos de texto** | Secuencias de `~/.XCompose`. |
 | **Idioma** | Idioma del sistema, del menú y de las aplicaciones. |
 | **Capturas** | Carpeta, tecla de captura, qué se captura, guardar/copiar, editor y carpeta de grabaciones. |
+| **Sistema** | Apps por defecto, energía, fuente, tamaño del texto, impresoras, juegos, accesos a red/bluetooth/sonido, reparaciones, puntos de restauración (snapper) y deshacer cambios aplicados. Usa los scripts `omarchy-*` y se aplica al momento. |
 | **Cambios** | Lista de lo que vas a cambiar antes de aplicarlo. |
 
 Guarda **solo lo que cambias** en `~/.config/hypr/escritorio.lua`, que se carga después de tus
@@ -49,7 +50,7 @@ error, deshace los cambios.
 
 ```bash
 lizarbe-escritorio --section capturas   # apariencia, ventanas, pantallas, teclado, mouse, cursor,
-                                        # atajos, inicio, luz, texto, idioma, capturas, cambios
+                                        # atajos, inicio, luz, texto, idioma, capturas, sistema, cambios
 ```
 
 ## Widgets

@@ -25,7 +25,7 @@ mod tests {
     use super::*;
 
     /// Prefijos de claves que se arman en tiempo de ejecución.
-    const DYNAMIC: &[&str] = &["bc.", "g.", "mon.", "o.", "restore.", "sec."];
+    const DYNAMIC: &[&str] = &["bc.", "g.", "mon.", "o.", "restore.", "sec.", "sys.pick."];
 
     #[test]
     fn dictionaries_are_complete_and_used() {

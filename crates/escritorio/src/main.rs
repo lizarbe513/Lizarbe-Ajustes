@@ -14,6 +14,7 @@ mod paths;
 mod record;
 mod store;
 mod sunset;
+mod system;
 mod ui;
 mod xcompose;
 

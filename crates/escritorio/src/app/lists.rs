@@ -218,6 +218,89 @@ impl App {
                 self.bind_filter = filter.to_string();
                 self.go_section(crate::catalog::Section::Keybinds);
             }
+            Act::SysPick(p) => {
+                let current = self.sys.as_ref().and_then(|s| s.values.get(&p)).cloned();
+                let items: Vec<PickItem> = p
+                    .options()
+                    .into_iter()
+                    .map(|(value, label)| PickItem {
+                        label,
+                        detail: String::new(),
+                        group: String::new(),
+                        value: json!(value),
+                        enabled: true,
+                    })
+                    .collect();
+                if items.is_empty() {
+                    self.toast(t("sys.no_options"), NoteKind::Warn);
+                    return;
+                }
+                let sel = current
+                    .as_ref()
+                    .and_then(|c| items.iter().position(|i| i.value == json!(c)))
+                    .unwrap_or(0);
+                self.popup = Some(Popup::Picker(Picker {
+                    title: t(&format!("sys.pick.{}", p.id())),
+                    items,
+                    sel,
+                    filter: String::new(),
+                    target: PickTarget::App(EPick::Sys(p)),
+                    current: current.map(|c| json!(c)),
+                    anchor: None,
+                }));
+            }
+            Act::SysPanel(panel) => {
+                if let Err(e) = crate::system::toggle_panel(panel) {
+                    self.toast(e, NoteKind::Warn);
+                }
+            }
+            Act::SysRun(task) => match task.confirm() {
+                Some(key) => {
+                    self.popup = Some(Popup::Confirm {
+                        title: t(task.label()),
+                        lines: t(key).split('\n').map(String::from).collect(),
+                        action: Confirm::SysRun(task),
+                    })
+                }
+                None => self.command = Some(task.command(&self.store.paths.omarchy_path)),
+            },
+            Act::SysOpen(program, args) => {
+                if let Err(e) = crate::system::spawn(program, args) {
+                    self.toast(e, NoteKind::Warn);
+                }
+            }
+            Act::Goto(section) => self.go_section(section),
+            Act::UndoPick => {
+                if self.store.dirty() {
+                    self.toast(t("undo.pending"), NoteKind::Warn);
+                    return;
+                }
+                let items: Vec<PickItem> = self
+                    .store
+                    .undo_points()
+                    .into_iter()
+                    .map(|p| PickItem {
+                        label: format!("{}  ·  {}", p.when(), p.names()),
+                        detail: String::new(),
+                        group: String::new(),
+                        value: json!(p.stamp),
+                        enabled: true,
+                    })
+                    .collect();
+                if items.is_empty() {
+                    self.toast(t("undo.none"), NoteKind::Info);
+                    return;
+                }
+                self.popup = Some(Popup::Picker(Picker {
+                    title: t("undo.pick"),
+                    items,
+                    sel: 0,
+                    filter: String::new(),
+                    target: PickTarget::App(EPick::Undo),
+                    current: None,
+                    anchor: None,
+                }));
+            }
             Act::AddCompose => {
                 self.popup = Some(Popup::Input(Input::new(
                     t("xc.add"),
@@ -506,6 +589,25 @@ impl App {
         }
     }
 
+    /// Deshace el cambio aplicado en esa fecha.
+    pub(super) fn undo(&mut self, stamp: &str) {
+        let Some(point) = self
+            .store
+            .undo_points()
+            .into_iter()
+            .find(|p| p.stamp == stamp)
+        else {
+            return;
+        };
+        match self.store.undo(&point) {
+            Ok(r) if r.errors.is_empty() => {
+                self.toast(tf("undo.done", &[("when", &point.when())]), NoteKind::Info)
+            }
+            Ok(r) => self.message(t("undo.failed"), r.errors),
+            Err(e) => self.message(t("undo.failed"), vec![format!("{e:#}")]),
+        }
+    }
+
     // ------------------------------------------------- ventanas propias
 
     pub(super) fn on_pick(&mut self, pick: EPick, value: Value) {
@@ -562,6 +664,39 @@ impl App {
                 let name =
                     apps::name_for(&text, self.apps_cached()).unwrap_or_else(|| text.clone());
                 self.add_custom(keys, name, format!("{{ launch = {text:?} }}"));
+            }
+            EPick::Sys(p) => {
+                match p.set(&text) {
+                    Ok(()) => self.toast(
+                        tf(
+                            "sys.changed",
+                            &[
+                                ("name", &t(&format!("sys.pick.{}", p.id()))),
+                                ("value", &p.label(&text)),
+                            ],
+                        ),
+                        NoteKind::Info,
+                    ),
+                    Err(e) => self.toast(e, NoteKind::Warn),
+                }
+                self.sys = None;
+            }
+            EPick::Undo => {
+                let when = self
+                    .store
+                    .undo_points()
+                    .into_iter()
+                    .find(|p| p.stamp == text)
+                    .map(|p| p.when())
+                    .unwrap_or_default();
+                self.popup = Some(Popup::Confirm {
+                    title: t("undo.pick"),
+                    lines: tf("undo.confirm", &[("when", &when)])
+                        .split('\n')
+                        .map(String::from)
+                        .collect(),
+                    action: Confirm::Undo(text),
+                });
             }
             EPick::AutostartApp => {
                 if text == PICK_CMD {
@@ -687,6 +822,10 @@ impl App {
                 show(&c.old),
                 show(&c.new),
             ));
+        }
+        if c.key == "m:gdk" {
+            let show = |v: &Option<Value>| v.as_ref().map(|v| v.to_string()).unwrap_or_default();
+            return Some((t("ch.gdk"), show(&c.old), show(&c.new)));
         }
         if let Some(cmd) = c.key.strip_prefix("as:") {
             let name = apps::name_for(cmd, self.apps_cached()).unwrap_or_else(|| cmd.to_string());

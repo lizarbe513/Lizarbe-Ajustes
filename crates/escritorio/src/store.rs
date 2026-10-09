@@ -9,10 +9,10 @@
 //!   `escritorio.lua`, así el atajo de escala de Omarchy sigue funcionando).
 //! - `x:mon:<pantalla>:<campo>` generan una regla `hl.monitor` completa.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use lizarbe_core::form::FieldStore;
 use lizarbe_core::fsutil::Transaction;
 use lizarbe_core::schema::FieldDef;
@@ -70,6 +70,8 @@ pub struct Store {
     pub ctx: Ctx,
     /// Escala general de `monitors.lua`; `None` si ya no tiene la variable.
     mon_scale: Option<Value>,
+    /// Escala de GTK de `monitors.lua` (`omarchy_gdk_scale`).
+    mon_gdk: Option<i64>,
     /// Tema y tamaño del cursor en uso.
     cursor: (String, i64),
     /// Atajos en uso (con su acción, si se puede mover).
@@ -146,6 +148,7 @@ impl Store {
             meca_active: false,
             ctx: Ctx::default(),
             mon_scale: None,
+            mon_gdk: None,
             cursor: ("default".into(), 24),
             binds: vec![],
             autostart: vec![],
@@ -170,8 +173,9 @@ impl Store {
         self.values = self.orig.clone();
         self.meca_active = read(&self.paths.hyprland_lua())
             .is_some_and(|t| t.lines().any(|l| l.trim() == "require(\"hyprland-gui\")"));
-        self.mon_scale =
-            read(&self.paths.monitors_lua()).and_then(|t| hyprfile::monitor_locals(&t).0);
+        (self.mon_scale, self.mon_gdk) = read(&self.paths.monitors_lua())
+            .map(|t| hyprfile::monitor_locals(&t))
+            .unwrap_or_default();
         self.cursor = (
             std::env::var("XCURSOR_THEME")
                 .ok()
@@ -378,8 +382,30 @@ impl Store {
         self.mon_scale.is_some()
     }
 
+    /// Escala general pendiente o la de `monitors.lua`.
+    fn global_scale(&self) -> Option<Value> {
+        self.values
+            .get("m:scale")
+            .cloned()
+            .or_else(|| self.mon_scale.clone())
+    }
+
+    /// Corrección pendiente de `GDK_SCALE` cuando no sigue a la escala real
+    /// (la plantilla de Omarchy trae 2 aunque la pantalla use 1).
+    pub fn gdk_change(&self) -> Option<Change> {
+        let live: Vec<f64> = self.ctx.monitors.iter().map(|m| m.scale).collect();
+        let want = hyprfile::gdk_for(&self.global_scale()?, &live)?;
+        let have = self.mon_gdk?;
+        (want != have).then(|| Change {
+            key: "m:gdk".into(),
+            old: Some(json!(have)),
+            new: Some(json!(want)),
+        })
+    }
+
     pub fn dirty(&self) -> bool {
-        self.values != self.orig
+        self.gdk_change().is_some()
+            || self.values != self.orig
             || self.autostart != self.autostart_orig
             || self.xcompose != self.xcompose_orig
     }
@@ -492,6 +518,7 @@ impl Store {
                 new: Some(json!(e.text)),
             });
         }
+        out.extend(self.gdk_change());
         out
     }
 
@@ -598,12 +625,20 @@ impl Store {
             let text = xcompose::render(self.xcompose_raw.as_deref().unwrap_or(""), &self.xcompose);
             tx.write(&self.paths.xcompose(), &text)?;
         }
-        if let Some(scale) = self.values.get("m:scale") {
+        let gdk = self.gdk_change().and_then(|c| c.new?.as_i64());
+        if (self.values.contains_key("m:scale") || gdk.is_some())
+            && let Some(scale) = self.global_scale()
+        {
+            let live: Vec<f64> = self.ctx.monitors.iter().map(|m| m.scale).collect();
+            let gdk = gdk.or_else(|| hyprfile::gdk_for(&scale, &live));
             let monitors = self.paths.monitors_lua();
             if let Some(text) =
-                read(&monitors).and_then(|t| hyprfile::with_monitor_scale(&t, scale))
+                read(&monitors).and_then(|t| hyprfile::with_monitor_scale(&t, &scale, gdk))
             {
                 tx.write(&monitors, &text)?;
+                if gdk != self.mon_gdk {
+                    report.warnings.push(t("gdk.relogin"));
+                }
             }
         }
         let language = self
@@ -637,6 +672,114 @@ impl Store {
         report.backups = tx.commit(30);
         self.reload();
         Ok(report)
+    }
+
+    /// Archivo que Escritorio escribe con ese nombre (las copias guardan solo
+    /// el nombre).
+    fn target_of(&self, name: &str) -> Option<PathBuf> {
+        let p = &self.paths;
+        Some(match name {
+            "escritorio.lua" => p.escritorio_lua(),
+            "hyprland.lua" => p.hyprland_lua(),
+            "monitors.lua" => p.monitors_lua(),
+            "autostart.lua" => p.autostart_lua(),
+            "bindings.lua" => p.bindings_lua(),
+            "hyprsunset.conf" => p.hyprsunset_conf(),
+            ".XCompose" => p.xcompose(),
+            "env" => p.uwsm_env(),
+            _ => return None,
+        })
+    }
+
+    /// Cambios aplicados que se pueden deshacer, del más reciente al más
+    /// antiguo. Cada uno tiene la copia de los archivos de justo antes.
+    pub fn undo_points(&self) -> Vec<UndoPoint> {
+        let Ok(rd) = std::fs::read_dir(&self.paths.backup_dir) else {
+            return vec![];
+        };
+        let mut points: BTreeMap<String, Vec<(PathBuf, PathBuf)>> = BTreeMap::new();
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            let Some((file, stamp)) = name.rsplit_once('.') else {
+                continue;
+            };
+            if stamp.len() != 15 || !stamp.chars().all(|c| c.is_ascii_digit() || c == '-') {
+                continue;
+            }
+            if let Some(target) = self.target_of(file) {
+                points
+                    .entry(stamp.to_string())
+                    .or_default()
+                    .push((e.path(), target));
+            }
+        }
+        points
+            .into_iter()
+            .rev()
+            .map(|(stamp, mut files)| {
+                files.sort();
+                UndoPoint { stamp, files }
+            })
+            .collect()
+    }
+
+    /// Devuelve los archivos a como estaban antes de ese cambio. Lo actual se
+    /// guarda antes, así que también se puede deshacer.
+    pub fn undo(&mut self, point: &UndoPoint) -> Result<ApplyReport> {
+        let mut report = ApplyReport::default();
+        let mut tx = Transaction::new(&self.paths.backup_dir);
+        for (backup, target) in &point.files {
+            let text =
+                std::fs::read_to_string(backup).with_context(|| format!("{}", backup.display()))?;
+            tx.write(target, &text)?;
+        }
+        if self.live && !self.paths.sandbox {
+            if let Err(errors) = hypr::reload_checked() {
+                tx.rollback()?;
+                let _ = hypr::reload();
+                report.errors = errors;
+                return Ok(report);
+            }
+            report.reloaded = true;
+        }
+        report.backups = tx.commit(30);
+        self.reload();
+        Ok(report)
+    }
+}
+
+/// Un cambio aplicado: su fecha (`20261007-171306`) y, por cada archivo, la
+/// copia de antes y dónde va.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UndoPoint {
+    pub stamp: String,
+    pub files: Vec<(PathBuf, PathBuf)>,
+}
+
+impl UndoPoint {
+    /// `20261007-171306` → `07/10/2026 17:13:06`.
+    pub fn when(&self) -> String {
+        let s = &self.stamp;
+        if s.len() != 15 {
+            return s.clone();
+        }
+        format!(
+            "{}/{}/{} {}:{}:{}",
+            &s[6..8],
+            &s[4..6],
+            &s[0..4],
+            &s[9..11],
+            &s[11..13],
+            &s[13..15]
+        )
+    }
+
+    pub fn names(&self) -> String {
+        self.files
+            .iter()
+            .filter_map(|(_, t)| t.file_name()?.to_str().map(String::from))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -999,6 +1142,61 @@ mod tests {
         let esc = std::fs::read_to_string(d.path().join("escritorio.lua")).unwrap();
         assert!(!esc.contains("m:scale"));
         assert!(!s.dirty(), "tras aplicar, la escala sale de monitors.lua");
+    }
+
+    #[test]
+    fn undoes_an_applied_change() {
+        let (d, mut s) = sandbox();
+        s.set_field(&Bind("general:gaps_in".into()), json!(9), Some(&json!(5)));
+        s.apply().unwrap();
+        let first = std::fs::read_to_string(d.path().join("escritorio.lua")).unwrap();
+        // Distinta fecha de copia.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        s.set_field(&Bind("general:gaps_in".into()), json!(12), Some(&json!(5)));
+        s.apply().unwrap();
+        let points = s.undo_points();
+        let last = points.first().expect("hay una copia del último cambio");
+        assert_eq!(last.names(), "escritorio.lua");
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        s.undo(&last.clone()).unwrap();
+        let now = std::fs::read_to_string(d.path().join("escritorio.lua")).unwrap();
+        assert_eq!(now, first, "vuelve a como estaba antes del último cambio");
+        assert_eq!(
+            s.undo_points().len(),
+            points.len() + 1,
+            "deshacer también deja copia"
+        );
+    }
+
+    #[test]
+    fn undo_point_dates() {
+        let p = UndoPoint {
+            stamp: "20261007-171306".into(),
+            files: vec![],
+        };
+        assert_eq!(p.when(), "07/10/2026 17:13:06");
+    }
+
+    #[test]
+    fn fixes_gdk_scale_of_omarchy_template() {
+        let (d, mut s) = sandbox();
+        std::fs::write(
+            d.path().join("monitors.lua"),
+            "local omarchy_gdk_scale = 2\nlocal omarchy_monitor_scale = \"auto\"\n",
+        )
+        .unwrap();
+        s.reload();
+        s.ctx.monitors.clear();
+        assert!(s.gdk_change().is_none(), "sin pantallas no se adivina");
+        s.ctx.monitors = vec![lizarbe_core::hypr::Monitor::named("HDMI-A-1")];
+        s.ctx.monitors[0].scale = 1.0;
+        let c = s.gdk_change().expect("un 1080p con GDK_SCALE=2");
+        assert_eq!((c.old, c.new), (Some(json!(2)), Some(json!(1))));
+        assert!(s.dirty());
+        s.apply().unwrap();
+        let mon = std::fs::read_to_string(d.path().join("monitors.lua")).unwrap();
+        assert!(mon.contains("local omarchy_gdk_scale = 1"));
+        assert!(mon.contains("local omarchy_monitor_scale = \"auto\""));
     }
 
     #[test]

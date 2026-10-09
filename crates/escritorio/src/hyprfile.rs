@@ -286,17 +286,27 @@ pub fn monitor_locals(text: &str) -> (Option<Value>, Option<i64>) {
     (scale, gdk)
 }
 
-/// `monitors.lua` con otra escala general, como hace
-/// `omarchy-hyprland-monitor-scaling`: la escala de GTK sigue a la general
-/// redondeada. `None` si el archivo ya no tiene esas variables.
-pub fn with_monitor_scale(text: &str, scale: &Value) -> Option<String> {
+/// Escala de GTK (`GDK_SCALE`, solo enteros) que corresponde a la escala
+/// general: la misma redondeada, como hace `omarchy-hyprland-monitor-scaling`.
+/// Con `"auto"` sale de la mayor escala real de las pantallas (`live`); si no
+/// hay pantallas, `None`. Si no coinciden, las apps XWayland que leen
+/// `GDK_SCALE` (Steam, launchers de Java…) se ven gigantes o diminutas.
+pub fn gdk_for(scale: &Value, live: &[f64]) -> Option<i64> {
+    let s = scale
+        .as_f64()
+        .or_else(|| live.iter().copied().reduce(f64::max))?;
+    Some((s.round() as i64).max(1))
+}
+
+/// `monitors.lua` con otra escala general y su escala de GTK (`gdk`; `None`
+/// la deja como está). `None` si el archivo ya no tiene esas variables.
+pub fn with_monitor_scale(text: &str, scale: &Value, gdk: Option<i64>) -> Option<String> {
     if !text
         .lines()
         .any(|l| l.starts_with("local omarchy_monitor_scale = "))
     {
         return None;
     }
-    let gdk = scale.as_f64().map(|s| (s.round() as i64).max(1));
     let mut out = String::new();
     for line in text.lines() {
         if line.starts_with("local omarchy_monitor_scale = ") {
@@ -641,17 +651,30 @@ mod tests {
     fn edits_monitor_locals() {
         let text = "local omarchy_gdk_scale = 2\nlocal omarchy_monitor_scale = \"auto\"\nhl.env(\"GDK_SCALE\", tostring(omarchy_gdk_scale))\n";
         assert_eq!(monitor_locals(text), (Some(json!("auto")), Some(2)));
-        let out = with_monitor_scale(text, &json!(1.25)).unwrap();
+        let out = with_monitor_scale(text, &json!(1.25), gdk_for(&json!(1.25), &[])).unwrap();
         assert!(
             out.starts_with("local omarchy_gdk_scale = 1\nlocal omarchy_monitor_scale = 1.25\n")
         );
         assert_eq!(monitor_locals(&out), (Some(json!(1.25)), Some(1)));
-        let out = with_monitor_scale(text, &json!("auto")).unwrap();
+        let out = with_monitor_scale(text, &json!("auto"), None).unwrap();
         assert!(
             out.contains("omarchy_gdk_scale = 2"),
-            "con auto se mantiene la de GTK"
+            "sin pantallas, con auto se mantiene la de GTK"
         );
-        assert_eq!(with_monitor_scale("hl.monitor({})\n", &json!(1)), None);
+        assert_eq!(
+            with_monitor_scale("hl.monitor({})\n", &json!(1), Some(1)),
+            None
+        );
+    }
+
+    #[test]
+    fn gdk_follows_real_scale() {
+        assert_eq!(gdk_for(&json!(1.6), &[1.0]), Some(2));
+        assert_eq!(gdk_for(&json!(1.25), &[]), Some(1));
+        // `auto` en un 1080p: Hyprland usa 1, así que GTK también.
+        assert_eq!(gdk_for(&json!("auto"), &[1.0]), Some(1));
+        assert_eq!(gdk_for(&json!("auto"), &[1.0, 2.0]), Some(2));
+        assert_eq!(gdk_for(&json!("auto"), &[]), None);
     }
 
     #[test]

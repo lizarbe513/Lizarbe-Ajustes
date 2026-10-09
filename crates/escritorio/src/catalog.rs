@@ -26,11 +26,12 @@ pub enum Section {
     Compose,
     Language,
     Screenshots,
+    System,
     Changes,
 }
 
 impl Section {
-    pub const ALL: [Section; 13] = [
+    pub const ALL: [Section; 14] = [
         Section::Appearance,
         Section::Windows,
         Section::Monitors,
@@ -43,6 +44,7 @@ impl Section {
         Section::Compose,
         Section::Language,
         Section::Screenshots,
+        Section::System,
         Section::Changes,
     ];
 
@@ -65,6 +67,8 @@ impl Section {
             "texto" | "compose" | "xcompose" => Section::Compose,
             "idioma" | "language" | "lang" => Section::Language,
             "capturas" | "captura" | "screenshots" | "screenshot" => Section::Screenshots,
+            "sistema" | "system" | "predeterminadas" | "defaults" | "energia" | "energía"
+            | "power" => Section::System,
             "cambios" | "changes" => Section::Changes,
             _ => return None,
         })
@@ -84,6 +88,7 @@ impl Section {
             Section::Compose => "compose",
             Section::Language => "language",
             Section::Screenshots => "screenshots",
+            Section::System => "system",
             Section::Changes => "changes",
         }
     }
@@ -102,6 +107,7 @@ impl Section {
             Section::Compose => "󰞅",
             Section::Language => "󰗊",
             Section::Screenshots => "󰹑",
+            Section::System => "󰒓",
             Section::Changes => "󰄬",
         }
     }
@@ -117,7 +123,7 @@ impl Section {
 
 /// Categorías de la barra lateral: (clave de texto, secciones). El orden
 /// coincide con `Section::ALL`.
-pub const CATEGORIES: [(&str, &[Section]); 4] = [
+pub const CATEGORIES: [(&str, &[Section]); 5] = [
     ("cat.desktop", &[Section::Appearance, Section::Windows]),
     (
         "cat.devices",
@@ -139,6 +145,7 @@ pub const CATEGORIES: [(&str, &[Section]); 4] = [
             Section::Screenshots,
         ],
     ),
+    ("cat.system", &[Section::System]),
     ("cat.review", &[Section::Changes]),
 ];
 
@@ -220,7 +227,11 @@ pub fn groups(section: Section, ctx: &Ctx) -> Vec<Group> {
         Section::NightLight => nightlight(),
         Section::Language => language(),
         Section::Screenshots => screenshots(),
-        Section::Keybinds | Section::Autostart | Section::Compose | Section::Changes => vec![],
+        Section::Keybinds
+        | Section::Autostart
+        | Section::Compose
+        | Section::System
+        | Section::Changes => vec![],
     }
 }
 
